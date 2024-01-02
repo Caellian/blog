@@ -1,7 +1,12 @@
 ---
 title: "Hello Blog"
 summary: "Details on how I set up my blog and why I did it the way I did."
+update: "2024-01-03"
 date: "2024-01-02"
+tags:
+  - SEO
+  - Svelte
+  - CD
 ---
 
 Sheer number of decisions that I faced while wanting to create an SSG blog was
@@ -10,22 +15,20 @@ finally settled for the current one because I wanted to have a place to write
 down my ideas more than I cared for it to be 100% perfect.
 
 I initially planned on using
-[pulldown_cmark](https://github.com/raphlinus/pulldown-cmark) for Markdown
+[`pulldown_cmark`](https://github.com/raphlinus/pulldown-cmark) for Markdown
 processing as it's blazingly fast, but given that I'm likely to have at most ~1k
 posts here and that this website is built via Cloudflare workers, performance
-isn't really _that_ much of an issue. I would've basically rewritten
-[zola](https://www.getzola.org/) from ground up, which is a pattern I'm trying
-to avoid (rewriting stuff).
+isn't really _that_ much of an issue.
 
 Extensions I had in mind were mostly along the lines of adding static
-[mermaid](https://mermaid.js.org/)-like diagram and
-[graphviz](https://www.graphviz.org/) graph support so that browsers blocking JS
+[`mermaid`](https://mermaid.js.org/)-like diagrams and
+[`graphviz`](https://www.graphviz.org/) graphs so that browsers with JS disabled
 (and terminal based ones) can still view figures I include.
 
-I ended up using [mdsvex](https://mdsvex.pngwn.io/) like Josh described in his
-["Let's learn SvelteKit by building a static Markdown blog from
+I ended up using [`mdsvex`](https://mdsvex.pngwn.io/) like Josh Collinsworth
+described in his ["Let's learn SvelteKit by building a static Markdown blog from
 scratch"](https://joshcollinsworth.com/blog/build-static-sveltekit-markdown-blog)
-article which describes the whole process in great detail and he's been keeping
+article which documents the whole process in great detail and he's been keeping
 his article up-to-date for 2 years now so I recommend it if you want to do
 something similar.
 
@@ -88,31 +91,36 @@ break if JS is disabled.
 At least a semi-functional CD pipeline is a must for anyone not willing to waste
 literal hours of their time doing menial and repetitive tasks.
 
-It took me about **10 min** to cleanup the old one as Cloudflare now [supports
-building Svelte
+Cloudflare now [supports building Svelte
 projects](https://developers.cloudflare.com/pages/framework-guides/deploy-a-svelte-site/)
-and so I don't have to maintain a separate branch for the served project files
-anymore. 🎉
+so I had to cleanup old plumming first. This was a win as I won't have to
+maintain a separate branch for the served project files in the future. 🎉
 
-It took me additional **15 min** to find and add a GitHub workflow that
-automatically updates the [blog](https://github.com/Caellian/blog)
-[submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules) in [portfolio
-repo](https://github.com/Caellian/caellian.github.io) with latest posts once I
-push to the `main` branch. This workflow in turn triggers the Cloudflare worker.
+I added a GitHub workflow that automatically updates the
+[blog](https://github.com/Caellian/blog)
+[submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules) in the
+[portfolio repo](https://github.com/Caellian/caellian.github.io) with latest
+posts once I push to the `main` branch. This workflow in turn triggers the
+Cloudflare worker.
 
-All that is to say that I basically have a very convenient [CMS](https://en.wikipedia.org/wiki/Content_management_system), that's versioned
+All that is to say that I basically have a very convenient
+[CMS](https://en.wikipedia.org/wiki/Content_management_system), that's versioned
 through git, and stores data in raw text files I can migrate at any point,
 completely free of charge. Served content is completely static as well so I have
-to do next to no [SEO optimization](https://en.wikipedia.org/wiki/Search_engine_optimization) and it loads blazingly fast.
+to do next to no [SEO
+optimization](https://en.wikipedia.org/wiki/Search_engine_optimization) and it
+loads blazingly fast.
 
-Using Rust for the blog would've provided much faster update times, but as
-things stand right now, after I push a new article it takes about 5 min for it
-to be available without me even having to open my browser.
+Using Rust for the blog would've probably provided somewhat faster update times,
+but given that it takes less than 5 minutes for the website to build and publish
+I think going with Rust would not have been worth the effort. I would've also
+rewritten majority of [`zola`](https://www.getzola.org/) functionality from
+ground up, which is a pattern I'm trying to avoid.
 
-So... CD pays off almost always and is definitely worth wasting your time on as
-it has the capacity to save you a lot of time, resources and money in the long
-term. Cloudflare hosting for static content is completely free so I end up only
-having to pay for a domain name.
+In the end, replacing the old CD pipeline with the new one took about half an
+hour and will save me a lot of time in the long run. Cloudflare hosting for
+static content is completely free so I end up only having to pay for a domain
+name.
 
 ### Mastodon chat
 
@@ -142,12 +150,17 @@ realatively easily add blacklisting if the need arises at some point.
 
 ## Issues
 
-The main issue I find in my current approach is that I basically have to extend
+An annoyance I find with my current approach is that I basically have to extend
 Markdown syntax via JS which is I guess technically quicker to do than modifying
 Rust code. That being said, I did spend an hour or so trying to get code block
-copy button to work though I expect that to be an exception. 😄
+copy button to work 😄 (though I expect that to be an exception).
+
+The only issue with `mdsvex` defaults I found so far is that the library it uses
+for code block tokenization ([`prismjs`](https://github.com/PrismJS/prism)) does
+poorer job than [`treesitter`](https://tree-sitter.github.io/tree-sitter/).
 
 Processed content also doesn't have caching so this approach doesn't scale well
 for large platforms. I'll deal with that once I reach the 100+ post mark - I
 don't expect few posts I write throughout the year to cause large delays in
-deployment. So it's an acceptable tradeoff between convenience and CD performance.
+deployment. So it's an acceptable tradeoff between convenience and CD
+performance.
