@@ -1,6 +1,6 @@
 ---
 title: "Hello Blog"
-summary: "Details on how I set up my blog and why I did it the way I did."
+summary: "Details on how I set up my blog."
 update: "2024-01-03"
 date: "2024-01-02"
 tags:
@@ -84,7 +84,7 @@ function addLineNumbers() {
 ```
 
 I don't mind that sort of stuff being dynamic as it doesn't cause the website to
-break if JS is disabled.
+break if JS is disabled. I really struggle defending myself against the intrusive thoughts of revendoring mdsvex improving that part - might be a FOSS contribution in the future. 
 
 ### Continuous Delivery
 
@@ -147,6 +147,44 @@ complicates moderation a bit, but it's not a huge issue to deal with as
 moderation is now delegated to people other than just me, I'm not responsible
 for dynamically mirroring content hosted by a third party and I can add
 realatively easily add blacklisting if the need arises at some point.
+
+## Future Improvements
+
+### Search
+
+This is a large topic in of itself. There's no need for search as of now because I don't have enough content for it to be useful yet.
+
+Ideally I'd like a WASM module that uses something as fast but better quality
+than XOR filters. [`tinysearch`](https://github.com/tinysearch/tinysearch) is
+currently one of top contendors. I really don't like pure JS solutions for this,
+even though I have all the data almost ready for it, because they're suuuper
+slow in comparison. That's not noticeable with 1-20 posts, but it becomes apparent with more.
+
+### Typed Content
+
+Given that the svx files can provide arbitrary metadata, an idea that I had while developing the blog was to add support for `type`d posts in order to allow me to share different types of content.
+
+If `type` is something other than `post`, the website could handle the metadata differently.
+
+For instance:
+```toml
+type: video
+title: USS Inverness
+summary: "A really cool USS Inverness model showcase I found."
+date: "2024-01-01"
+link: https://peertube.tv/w/eQh6M1F7BQnkKZW6ZYerpK
+```
+
+So the above would be shown as an embed on the website and people following the
+RSS stream could directly access it. In contrast, writing a blog _post_ only
+containing a single video with maybe a one sentence comment on it doesn't seem
+as
+appealing.
+
+The reason I want to do this is I often find very cool and useful resources I'd
+like to share instead of regurgitating. For instance, writing a post describing
+how to setup a static blog from scratch would've been a waste so I linked a
+better one that's likely to stay updated.
 
 ## Issues
 
