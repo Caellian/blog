@@ -1,7 +1,7 @@
 ---
 title: "Hello Blog"
 summary: "Details on how I set up my blog."
-update: "2024-01-03"
+update: "2024-01-04"
 date: "2024-01-02"
 tags:
   - SEO
@@ -156,9 +156,10 @@ This is a large topic in of itself. There's no need for search as of now because
 
 Ideally I'd like a WASM module that uses something as fast but better quality
 than XOR filters. [`tinysearch`](https://github.com/tinysearch/tinysearch) is
-currently one of top contendors. I really don't like pure JS solutions for this,
-even though I have all the data almost ready for it, because they're suuuper
-slow in comparison. That's not noticeable with 1-20 posts, but it becomes apparent with more.
+currently one of my top contendors in static website search space though it _is_
+using XOR filters. I really don't like pure JS solutions for this, because
+they're suuuper slow in comparison. That's not noticeable with 1-20 posts, but
+it becomes apparent with more.
 
 ### Typed Content
 
@@ -175,16 +176,15 @@ date: "2024-01-01"
 link: https://peertube.tv/w/eQh6M1F7BQnkKZW6ZYerpK
 ```
 
-So the above would be shown as an embed on the website and people following the
-RSS stream could directly access it. In contrast, writing a blog _post_ only
-containing a single video with maybe a one sentence comment on it doesn't seem
-as
+So the above would be shown as an embed on the website, offering direct access
+for those following the RSS stream. Conversely, writing a blog post featuring a
+single video with maybe a one sentence comment attached doesn't seem as
 appealing.
 
 The reason I want to do this is I often find very cool and useful resources I'd
-like to share instead of regurgitating. For instance, writing a post describing
-how to setup a static blog from scratch would've been a waste so I linked a
-better one that's likely to stay updated.
+rather share than reiterate. For instance, writing a post describing how to
+setup a static blog from scratch would've been a worse decision than linking a
+better (maintained) one.
 
 ## Issues
 
