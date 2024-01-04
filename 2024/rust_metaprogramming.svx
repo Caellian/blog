@@ -1,6 +1,7 @@
 ---
 title: "Rust Metaprogramming"
 summary: "They say macros are Rust equivalent of C++ metaprograming; I beg to differ."
+date: "2024-01-05"
 tags:
   - Rust
   - metaprogramming
@@ -256,8 +257,8 @@ macro_rules! smaller_tuples_too {
 }
 ```
 
-And now we can apply combine the two macros to generate 64 implementations of
-the trait in a single line:
+And now we can combine the two macros to generate 64 implementations of the
+trait with a single macro call:
 <div data-copy/>
 
 ```rust
@@ -451,7 +452,9 @@ With this nifty addition, we can substitute our previous chain of expressions wi
 type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
 ```
 
-Now that we've built the the getter, we have a good template to working with
+You can try out this code on [playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=98836acb79ac49a15f465de5a010955a) ([gist](https://gist.github.com/rust-play/98836acb79ac49a15f465de5a010955a)).
+
+Now that we've built the the getter, we have a good template to work with
 while implementing the rest of the operators we might need. In order to properly
 gauge that though it's time for us to start designing the user facing API so
 that we get a better idea of what our exact requirements are.
