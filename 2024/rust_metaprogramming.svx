@@ -144,8 +144,7 @@ In order to have a useful type list, we need methods to at least:
 
 Type lists in C++ metaprogramming are built on the same principles, though they
 are nicer to work with because of vararg generic support. Ideally, our _type
-list_ type would be zero sized so that we can store it in a struct without using
-`Phantom` types, but we'll focus on that later.
+list_ type would be zero sized but given that tuples _are_ sized we can get around it by storing our type list as an empty array (`[TypeList; 0]`). `Phantom` might be more appropriate for this kind of use though.
 
 ## Practice
 
@@ -262,7 +261,16 @@ the trait in a single line:
 <div data-copy/>
 
 ```rust
-smaller_tuples_too!(impl_type_list, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH, AI, AJ, AK, AL, AM, AN, AO, AP, AQ, AR, AS, AT, AU, AV, AW, AX, AY, AZ, BA, BB, BC, BD, BE, BF, BG, BH, BI, BJ);
+#[rustfmt::skip]
+smaller_tuples_too!(impl_type_list,
+    A, B, C, D, E, F, G, H, I, J,
+    K, L, M, N, O, P, Q, R, S, T,
+    U, V, W, X, Y, Z, AA, AB, AC, AD,
+    AE, AF, AG, AH, AI, AJ, AK, AL, AM, AN,
+    AO, AP, AQ, AR, AS, AT, AU, AV, AW, AX,
+    AY, AZ, BA, BB, BC, BD, BE, BF, BG, BH,
+    BI, BJ, BK, BL
+);
 ```
 
 And just like that we've built a forward type iterator. You can give it a try in
@@ -304,7 +312,7 @@ Our `Get` function trait declaration is rather simple:
 <div data-copy/>
 
 ```rust
-trait Get<N: typenum::Unsigned> {
+trait TypeIndex<N> {
     type Value;
 }
 ```
@@ -315,31 +323,33 @@ Our implementation of the trait (if it worked), would look something like:
 use std::ops::Sub;
 use typenum::{Gr, Sub1, Unsigned, B0, B1};
 
-impl<L> Get<B0> for L
+impl<L> TypeIndex<B0> for L
 where
     L: TypeList,
 {
     type Value = L::Head;
 }
 
-impl<N, L> Get<N> for L
+impl<N, L> TypeIndex<N> for L
 where
     N: Unsigned + Sub<B1>,
     L: TypeList,
     Sub1<N>: Unsigned
 {
-    type Value = <L::Tail as Get<Sub1<N>>>::Value;
+    type Value = <L::Tail as TypeIndex<Sub1<N>>>::Value;
 }
 ```
 
 The issue with the above code stems from the fact (as the compiler tells us)
 that `typenum` _could_ at some point implement `Sub1<N>: Unsigned` for `B0`.
 This is wrong as there's no number lesser than `N = 0` which would satisfy the
-`Unsigned` constraint.
+`Unsigned` constraint, so `typenum` won't do that - the compiler can't
+understand that though.
 
-But it's also true that at some point the upstream crate might change and the
+It's also true that at some point the upstream crate _might_ change and the
 compiler can't guarantee our bounds to hold true which would in term cause
-double/ambiguous implementation for `N = 0` case.
+double/ambiguous implementation for `N = 0` case, evem though `typenum` would
+still work just fine.
 
 The compiler also gives us a hint through it's error message though - while we
 can't guarantee the upstream crate won't change and break our code, we _can_
@@ -347,3 +357,119 @@ guarantee that _our_ code won't do so because then it won't compile. So what we
 need is to express the same semantics, only without relying on `typenum` as our
 discriminant between `L::Head` and `<L::Tail as Get<Sub1<N>>>::Value` cases.
 
+To achieve this we want to copy `Sub1` from typenum, which is a type alias:
+```rust
+type Sub1<N> = <N as std::op::Sub<B1>>::Output;
+```
+
+## Operators
+
+In order to do that, we need our own `Decrease` trait:
+
+```rust
+trait Decrease {
+    type Value;
+}
+
+impl Decrease for U1 {
+    type Value = U0;
+}
+
+impl Decrease for U2 {
+    type Value = U1;
+}
+
+impl Decrease for U3 {
+    type Value = U2;
+}
+// 61 more...
+```
+
+We can use macros again to reduce total amount of code:
+<div data-copy/>
+
+```rust
+trait Decrease {
+    type Value;
+}
+
+macro_rules! impl_decrease {
+    ($current:ident, $next:ident) => {
+        impl Decrease for typenum::$current {
+            type Value = typenum::$next;
+        }
+    };
+}
+
+macro_rules! all_seq_pairs {
+    ($m: ident, $ta: ident) => {};
+    ($m: ident, $ta: ident, $tb: ident) => {
+        $m!{$tb, $ta}
+    };
+    ($m: ident, $ta: ident, $tb: ident, $($tt: ident),*) => {
+        all_seq_pairs!{$m, $tb, $($tt),*}
+        $m!{$tb, $ta}
+    };
+}
+
+#[rustfmt::skip]
+all_seq_pairs!(impl_decrease,
+    U0,U1,U2,U3,U4,U5,U6,U7,U8,U9,
+    U10,U11,U12,U13,U14,U15,U16,U17,U18,U19,
+    U20,U21,U22,U23,U24,U25,U26,U27,U28,U29,
+    U30,U31,U32,U33,U34,U35,U36,U37,U38,U39,
+    U40,U41,U42,U43,U44,U45,U46,U47,U48,U49,
+    U50,U51,U52,U53,U54,U55,U56,U57,U58,U59,
+    U60,U61,U62,U63,U64
+);
+```
+
+Now with our own decrement operator, we can finally express bounds for `Get` unambiguously:
+
+```rust
+impl<L> TypeIndex<typenum::U0> for L
+where
+    L: TypeList,
+{
+    type Value = L::Head;
+}
+
+impl<N, L> TypeIndex<N> for L
+where
+    N: Unsigned + Decrease,
+    L: TypeList,
+    <N as Decrease>::Value: Unsigned, // decreased value is unsigned
+    L::Tail: TypeIndex<<N as Decrease>::Value>, // tail must be indexable
+{
+    type Value = <L::Tail as TypeIndex<<N as Decrease>::Value>>::Value;
+}
+```
+
+With this nifty addition, we can substitute our previous chain of expressions with a single indexing operator and the compiler will do the rest:
+
+```rust
+type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
+```
+
+Now that we've built the the getter, we have a good template to working with
+while implementing the rest of the operators we might need. In order to properly
+gauge that though it's time for us to start designing the user facing API so
+that we get a better idea of what our exact requirements are.
+
+## API-first approach
+
+Throught the previous section we've solved all major issues that would've
+prevented us from implementing the functionality we need if they didn't work
+out. Now that we know we _can_ do it, we need to focus on what it is we're
+trying to do.
+
+Previously I would've just built all the operators one might need to use type
+lists, but I've since found that the top-to-bottom approach is a lot more time
+efficient as we won't be wasting time on funcionality we won't use. If I ever
+turn the code in this article into a library, only _then_ bottom-to-top approach
+would be a better fit - but as it currently stands, we're trying to solve a real
+issues and not just play around with capabilities of the type system.
+
+We want our `Model` trait to specify inputs and outputs in the type signature. The main issue with this is that traits need to generate a virtual table that's known to the compiler while `litesim` is being built. So the model **must** have a single method for handling all inputs/outputs.
+
+Implementation of that method is however allowed branch off based on input/output index i.e. index of type in `I`/`O` type tuple. Our current design allows for labeled inputs and outputs as well.
