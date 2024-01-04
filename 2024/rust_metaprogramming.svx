@@ -147,7 +147,7 @@ are nicer to work with because of vararg generic support. Ideally, our _type
 list_ type would be zero sized so that we can store it in a struct without using
 `Phantom` types, but we'll focus on that later.
 
-### Practice
+## Practice
 
 We start by defining a trait we can use to specify some arbitrary type list. Due
 to lack of vararg generics there will be an upper bound to our list but thanks
@@ -271,10 +271,79 @@ the
 ([gist](https://gist.github.com/rust-play/b4b5020a222aa2ea3cb93217187dff59)).
 
 You'll notice that it's quite a pickle to access n-th element as we have to
-reaffirm the type of `Tail` for each level. In order to make our lives easer,
-and turn the forward iterator into an actual type list, we'll define a get
-function.
+reaffirm the type of `Tail` for each level.
 
-We would generaly reach for functions to do that at this point, but we're
-working with types instead of values, and functions return a value. Thus, we
-have to resort to using type declarations.
+We have to reaffirm the `Tail` event though we have specified that `Tail:
+TypeList`, because the compiler can't just assume the next `Tail` is being
+accessed from `TypeList` vtable because the result `Tail` might implement some
+other trait that also has a `Tail` associated type. `Tail` might be a bad
+example because it's unique in our context, but consider the following:
+```rust
+trait MyTrait {
+    type Error;
+}
+impl MyTrait for u32 {
+    type Error = std::io::Error;
+}
+
+type Ambiguous = u32::Error; // Which Error?
+type Explicit = <u32 as TryFrom<i32>>::Error; // TryFromIntError
+```
+
+## Function Traits
+
+In order to make our lives easer, and turn the forward iterator into an actual
+type list, we'll define a `get` function. That is, we would generaly reach for
+functions to do that, but we're working with types instead of values, and
+functions return a value. Thus, we have to resort to using type declarations. As
+we'll have to perform operations on const numbers, and given that we're trying
+to do all of this in stable Rust, we'll use
+[`typenum`](https://github.com/paholg/typenum) crate.
+
+Our `Get` function trait declaration is rather simple:
+<div data-copy/>
+
+```rust
+trait Get<N: typenum::Unsigned> {
+    type Value;
+}
+```
+
+Our implementation of the trait (if it worked), would look something like:
+
+```rust
+use std::ops::Sub;
+use typenum::{Gr, Sub1, Unsigned, B0, B1};
+
+impl<L> Get<B0> for L
+where
+    L: TypeList,
+{
+    type Value = L::Head;
+}
+
+impl<N, L> Get<N> for L
+where
+    N: Unsigned + Sub<B1>,
+    L: TypeList,
+    Sub1<N>: Unsigned
+{
+    type Value = <L::Tail as Get<Sub1<N>>>::Value;
+}
+```
+
+The issue with the above code stems from the fact (as the compiler tells us)
+that `typenum` _could_ at some point implement `Sub1<N>: Unsigned` for `B0`.
+This is wrong as there's no number lesser than `N = 0` which would satisfy the
+`Unsigned` constraint.
+
+But it's also true that at some point the upstream crate might change and the
+compiler can't guarantee our bounds to hold true which would in term cause
+double/ambiguous implementation for `N = 0` case.
+
+The compiler also gives us a hint through it's error message though - while we
+can't guarantee the upstream crate won't change and break our code, we _can_
+guarantee that _our_ code won't do so because then it won't compile. So what we
+need is to express the same semantics, only without relying on `typenum` as our
+discriminant between `L::Head` and `<L::Tail as Get<Sub1<N>>>::Value` cases.
+
