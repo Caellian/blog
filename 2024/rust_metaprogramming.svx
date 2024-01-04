@@ -1,7 +1,6 @@
 ---
 title: "Rust Metaprogramming"
 summary: "They say macros are Rust equivalent of C++ metaprograming; I beg to differ."
-date: "2024-01-05"
 tags:
   - Rust
   - metaprogramming
