@@ -1,0 +1,280 @@
+---
+title: "Rust Metaprogramming"
+summary: "They say macros are Rust equivalent of C++ metaprograming; I beg to differ."
+tags:
+  - Rust
+  - metaprogramming
+  - abstraction
+---
+
+For one of my classes I wrote a discrete event simulation library in Rust. The
+reason I wrote it was...
+
+- I like Rust.
+- I did very little reasearch into existing libraries.
+- I needed filler for the essay as I covered the assigned topic and didn't have
+  very many pages.
+
+First of all, event simulation is a weird topic. While lookig up related
+literature and resources I got a vibe that it was much more popular 10-ish years
+ago, and I'm not sure why the hype died down. In library space there's very few
+solutions being actively maintained.
+
+Notable ones (in my opinion) are [`sympy`](https://gitlab.com/team-simpy/simpy)
+and [`asynchronix`](https://github.com/asynchronics/asynchronix).
+
+## Introduction
+
+I wanted to build something dumb simple to use that doesn't have as steep
+learning curve as some other solutions in the space so I made
+[`litesim`](https://github.com/Caellian/litesim) (and descibed it in the essay
+😄).
+
+### LiteSim
+
+Cool thing about litesim is that it basically erases all simulation internals
+and leaves you with a clean slate. It's based on
+[DEVS](https://en.wikipedia.org/wiki/DEVS) so the whole simulation is built out
+of composable models. The only structs the user needs to interact with are
+`SystemModel` and `Simulation`.
+
+A simple ping-pong example requires less than 50 lines of code and very little
+understanding of how the library works:
+
+```rust
+use litesim::prelude::*;
+
+pub struct Player;
+
+#[litesim_model]
+impl<'s> Model<'s> for Player {
+    #[input(signal)]
+    fn receive(&mut self, ctx: ModelCtx<'s>) -> Result<(), SimulationError> {
+        ctx.schedule_update(Now)?;
+        Ok(())
+    }
+
+    #[output(signal)]
+    fn send(&self) -> Result<(), SimulationError>;
+
+    fn handle_update(&mut self, ctx: ModelCtx<'s>) -> Result<(), SimulationError> {
+        log::info!(
+            "Player {} got the ball at {}",
+            ctx.model_id.as_ref(),
+            ctx.time
+        );
+        self.send(In(ctx.rand_range(0.0..1.0)))?;
+        Ok(())
+    }
+}
+
+fn main() {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
+    let mut system = SystemModel::new();
+
+    system.push_model("p1", Player);
+    system.push_model("p2", Player);
+
+    system.push_route(connection!(p1::send), connection!(p2::receive));
+    system.push_route(connection!(p2::send), connection!(p1::receive));
+
+    let mut sim = Simulation::new(rand::thread_rng(), system, 0.0).expect("invalid model");
+
+    sim.schedule_event(0.5, Signal(), connection!(p1::receive))
+        .expect("unable to schedule initial event");
+
+    sim.run_until(50.0).expect("simulation error");
+}
+```
+
+Most of the heavy lifting is done by the `#[litesim_model]` proc macro. This
+macro does a lot of code transformation in the background in order to make the
+`impl` block look as simple as it does.
+
+In minimal form, implementing `Model<'s>` with it looks like:
+```rust
+#[litesim_model]
+impl<'s> Model<'s> for MyModel {}
+```
+
+The _generated code is type safe_, but if the user implements the `Model<'s>`
+trait without the macro, they're allowed to send arbitrary data into outputs
+which is not ideal. The macro ensures correctess by filling in specified output
+parameter types manually into invoked function signature, but bad inputs really
+only fail bacause argument and specified generic types don't match, not because
+the function doesn't exist or some bounds weren't satisfied.
+
+That's bad because the library assumes the provided type will be the same as the
+one specified on the connecting input connector of another model. The other
+model (generally) can't tell the adress doesn't hold a valid type which can then
+cause undefined behavior. Even assuming the layout of both types is identical,
+it's still a semantic error and likely violates the API of the recieving model.
+
+There is no sane way to support this use case without resorting to type
+metaprogramming. Macros can't handle the use case where `Model<'s>` might change
+interface and lookup table(s) based on types litesim isn't aware of. So in order
+to tackle this, I'd like to replace `Model<'s>` with something like:
+```rust
+type Model<'s, I, O> {
+  // details...
+}
+```
+
+## Metaprogramming theory
+
+We're trying to specify different model inputs/outputs as a list of types. Rust
+doesn't have variable argument generics
+([yet](https://github.com/rust-lang/rfcs/issues/376)), but it does have
+primitive that can convey similar information - **tuples**.
+
+Tuple is a runtime type though and the language doesn't have support for
+operations we expect a list to support, and specifically doesn't support them
+for _types_. Traits allow us however to add such information and `rustc` can
+deal with it properly.
+
+In order to have a useful type list, we need methods to at least:
+- access type list **size**,
+- access **head** element,
+- access list **tail**,
+- access and
+- check if `T` is contained in the list.
+
+Type lists in C++ metaprogramming are built on the same principles, though they
+are nicer to work with because of vararg generic support. Ideally, our _type
+list_ type would be zero sized so that we can store it in a struct without using
+`Phantom` types, but we'll focus on that later.
+
+### Practice
+
+We start by defining a trait we can use to specify some arbitrary type list. Due
+to lack of vararg generics there will be an upper bound to our list but thanks
+to macros we can make it arbitrarily large. Relistically, we don't expect models
+with more than 64 inputs and outputs.
+
+We declare our list trait with some basic properties:
+```rust
+trait TypeList {
+    type Head;
+    type Tail: TypeList;
+}
+```
+
+Now we can start implementing it for tuples we want to support:
+```rust
+impl TypeList for () {
+    type Head = !;
+    type Tail = ();
+}
+// Uhm...
+```
+We can't use never type `!` yet so we'll resort to using `()` instead. This
+leaves us with no way to check if we're done iterating over our list so we need
+to add that missing information. Given that the code for tuples will be
+generated anyway, it's straightforward enough to add a `SIZE` constant.
+
+
+```rust
+trait TypeList {
+    const SIZE: usize;
+    type Head;
+    type Tail: TypeList;
+}
+
+impl TypeList for () {
+    const SIZE: usize = 0;
+    type Head = ();
+    type Tail = ();
+}
+
+impl<A> TypeList for (A,) {
+    const SIZE: usize = 1;
+    type Head = A;
+    type Tail = ();
+}
+
+impl<A, B> TypeList for (A, B) {
+    const SIZE: usize = 2;
+    type Head = A;
+    type Tail = (B,);
+}
+
+impl<A, B, C> TypeList for (A, B, C) {
+    const SIZE: usize = 3;
+    type Head = A;
+    type Tail = (B, C);
+}
+```
+
+Now that we've written out the first four cases, we can politely ask our
+friendly neighborhood LLM to convert it into a macro for us:
+<div data-copy/>
+
+```rust
+macro_rules! impl_type_list {
+    () => {
+        impl TypeList for () {
+            const SIZE: usize = 0;
+            type Head = ();
+            type Tail = ();
+        }
+    };
+    
+    ($A:ident) => {
+        impl<$A> TypeList for ($A,) {
+            const SIZE: usize = 1;
+            type Head = $A;
+            type Tail = ();
+        }
+    };
+    
+    ($A:ident, $($B:ident),*) => {
+        impl<$A, $($B),*> TypeList for ($A, $($B),*) {
+            const SIZE: usize = 1 + <($($B,)*) as TypeList>::SIZE;
+            type Head = $A;
+            type Tail = ($($B,)*);
+        }
+    };
+}
+```
+
+And apply some magic I picked up from
+[`piccolo`](https://github.com/kyren/piccolo/issues/38#issuecomment-1819824923):
+<div data-copy/>
+
+```rust
+macro_rules! smaller_tuples_too {
+    ($m: ident, $ty: ident) => {
+        $m!{}
+        $m!{$ty}
+    };
+    ($m: ident, $ty: ident, $($tt: ident),*) => {
+        smaller_tuples_too!{$m, $($tt),*}
+        $m!{$ty, $($tt),*}
+    };
+}
+```
+
+And now we can apply combine the two macros to generate 64 implementations of
+the trait in a single line:
+<div data-copy/>
+
+```rust
+smaller_tuples_too!(impl_type_list, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH, AI, AJ, AK, AL, AM, AN, AO, AP, AQ, AR, AS, AT, AU, AV, AW, AX, AY, AZ, BA, BB, BC, BD, BE, BF, BG, BH, BI, BJ);
+```
+
+And just like that we've built a forward type iterator. You can give it a try in
+the
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=b4b5020a222aa2ea3cb93217187dff59)
+([gist](https://gist.github.com/rust-play/b4b5020a222aa2ea3cb93217187dff59)).
+
+You'll notice that it's quite a pickle to access n-th element as we have to
+reaffirm the type of `Tail` for each level. In order to make our lives easer,
+and turn the forward iterator into an actual type list, we'll define a get
+function.
+
+We would generaly reach for functions to do that at this point, but we're
+working with types instead of values, and functions return a value. Thus, we
+have to resort to using type declarations.
