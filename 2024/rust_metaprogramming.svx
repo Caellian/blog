@@ -1,6 +1,6 @@
 ---
-title: "Rust Metaprogramming"
-summary: "They say macros are Rust equivalent of C++ metaprograming; I beg to differ."
+title: "Rust Metaprogramming - Part 1"
+summary: "They say macros are Rust equivalent of C++ metaprograming. No they ain't and I can prove it."
 date: "2024-01-05"
 tags:
   - Rust
@@ -8,50 +8,62 @@ tags:
   - abstraction
 ---
 
-For one of my classes I wrote a discrete event simulation library in Rust. The
-reason I wrote it was...
+For one of my classes, I wrote a discrete event simulation library in Rust. The
+reasons I wrote it were...
 
 - I like Rust.
-- I did very little reasearch into existing libraries.
+- I did very little research into existing libraries.
 - I needed filler for the essay as I covered the assigned topic and didn't have
-  very many pages.
+  much content.
+- I didn't like requirements some existing libraries imposed on data I used in
+  my simulation.
+- I have an adventurous spirit and like exploring topics I know little about,
+  mostly through code.
 
-Notable ones (from my limited search) are
-[`sympy`](https://gitlab.com/team-simpy/simpy) as the most used one by the
-mainstream and [`asynchronix`](https://github.com/asynchronics/asynchronix) as
-the most unique one.
+I had several good references I used while doing so:
+- [`sympy`](https://gitlab.com/team-simpy/simpy)
+  - found this _after_ writing my thing, would've saved me time
+  - listing it as a good alternative to quickly get started with simulation modeling
+- [`sim`](https://github.com/ndebuhr/sim) - the library I used but didn't like
+  the requirements of
+  - taught me about [DEVS](https://en.wikipedia.org/wiki/DEVS) and diffent noise
+    functions
+- [`sequent`](https://github.com/kindredgroup/sequent)
+  - seductively tempted me into implementing backtracking
+- [`asynchronix`](https://github.com/asynchronics/asynchronix)
+  - showed me all the things I want, but don't have time to implement properly
 
 ## Introduction
 
-While looking up related literature and resources I got a vibe that it was much
-more popular 10-ish years ago, and I'm not sure why the hype died down. In
-library space there's very few solutions being actively maintained.
-
 I wanted to build something dumb simple to use that doesn't have as steep
-learning curve as some other solutions in the space so I made
-[`litesim`](https://github.com/Caellian/litesim) (and descibed it in the essay
-😄). My teacher was like:
+learning curve as some other solutions in the space have. So I made
+[`litesim`](https://github.com/Caellian/litesim) (and described it in the essay
+😄). The professor was like:
 
-> I'm not sure _why_ you did it, that's more than I asked for. <span
+> I'm not sure _why_ you did it, that's much more than I asked for and it wasn't necessary. <span
 > data-paraphrase></span>
 
 which I guess is true, but I also felt like there was nothing simple enough for
-use cases like mine where I was on a tight schedule and needed to write a
-simulation **fast** without wasting time learning how to use 10 new concepts
-introduced by a tool that's supposed to make things simpler.
+use cases like mine, where I was on a tight schedule and needed to write a
+simulation **fast**, without wasting time learning how to use 10 new concepts
+introduced by a library that's supposed to make things simpler.
 
-So instead of making a simulation I made a discrete event simulation library
+The biggest deal breaker was that the library I tried using required my data to
+support things like serialization even though I never planned on storing an
+in-flight model as it was supposed to be just a simple demo.
+
+So instead of making a simulation, I made a discrete event simulation library
 that I felt was the appropriate substitute. You could argue that the library was
-a bigger waste of time, but don't try me because I win arguments even when I
-know I'm wrong. <span data-tone=half-joke></span>
+a bigger time hog, but don't try me because I win arguments even when I know I'm
+wrong. <span data-tone=half-joke></span>
 
-### LiteSim
+### litesim
 
-Cool thing about litesim is that it basically erases all simulation internals
-and leaves you with a clean slate when you're modelling a system. It's based on
+Litesim erases almost all library internals and leaves the end-user with a clean
+slate when they're modelling a system. It's based on
 [DEVS](https://en.wikipedia.org/wiki/DEVS) so the whole simulation is built out
-of composable models. The only structs the user needs to interact with are
-`SystemModel` and `Simulation`.
+of composable models (though it deviates a lot from the fromalism). The only
+structs the user generally needs to interact with are `SystemModel`, `Simulation` and `ModelCtx`.
 
 A simple ping-pong example requires less than 50 lines of code and very little
 understanding of how the library works:
@@ -117,16 +129,17 @@ impl<'s> Model<'s> for MyModel {}
 
 The _generated code is type safe_, but if the user implements the `Model<'s>`
 trait without the macro, they're allowed to send arbitrary data into outputs
-which is not ideal. The macro ensures correctess by filling in specified output
+which is not ideal. The macro ensures correctness by filling in specified output
 parameter types manually into invoked function signature, but bad inputs really
-only fail bacause argument and specified generic types don't match, not because
+only fail because argument and specified generic types don't match, not because
 the function doesn't exist or some bounds weren't satisfied.
 
 That's bad because the library assumes the provided type will be the same as the
 one specified on the connecting input connector of another model. The other
-model (generally) can't tell the adress doesn't hold a valid type which can then
-cause undefined behavior. Even assuming the layout of both types is identical,
-it's still a semantic error and likely violates the API of the recieving model.
+model (generally) can't tell the address doesn't hold a valid type which can
+then cause undefined behavior. Even assuming the layout of both types is
+identical, it's still a semantic error and likely violates the API of the
+receiving model.
 
 There is no sane way to support this use case without resorting to type
 metaprogramming. Macros can't handle the use case where `Model<'s>` might change
@@ -140,35 +153,30 @@ type Model<'s, I, O> {
 
 ## What Lists Are Made Of
 
-We're trying to specify different model inputs/outputs as a list of types. Rust
-doesn't have variable argument generics
+We're trying to specify different model inputs and outputs as a list of types.
+Rust doesn't have variable argument generics
 ([yet](https://github.com/rust-lang/rfcs/issues/376)), but it does have
-primitive that can convey similar information - **tuples**.
+primitive that can convey similar information - **tuples**. The same is
+generally used by C++ metaprogramming libraries such as
+[`hana`](https://boostorg.github.io/hana/).
 
-Tuple is a runtime type though and the language doesn't have support for
+Tuple is a runtime type though, and the language doesn't have support for
 operations we expect a list to support, and specifically doesn't support them
-for _types_. Traits allow us however to add such information and `rustc` can
+for _types_. Traits however allow us to add such information and `rustc` can
 deal with it properly.
 
-In order to have a useful type list, we need methods to at least:
-- access type list **size**,
-- access **head** element,
-- access list **tail**,
-- access n-th element, and
-- check if `T` is contained in the list.
+In order to have a useful type list, we need a way to destructure the list into
+a **head** element and **tail** (remaining elements).
 
 Type lists in C++ metaprogramming are built on the same principles, though they
-are nicer to work with because of vararg generic support. Ideally, our _type
-list_ type would be zero sized but given that tuples _are_ sized we can get
-around it by storing our type list as an empty array (`[TypeList; 0]`).
-`Phantom` might be more appropriate for this kind of use though.
+are nicer to work with because of vararg generic support.
 
 ## Type List Type
 
 We start by defining a trait we can use to specify some arbitrary type list. Due
 to lack of vararg generics there will be an upper bound to our list but thanks
-to macros we can make it arbitrarily large. Relistically, we don't expect models
-with more than 64 inputs and outputs.
+to macros we can make it arbitrarily large. Realistically, we don't expect
+models with more than 64 inputs and outputs.
 
 We declare our list trait with some basic properties:
 ```rust
@@ -186,39 +194,35 @@ impl TypeList for () {
 }
 // Uhm...
 ```
-We can't use never type `!` yet so we'll resort to using `()` instead. This
-leaves us with no way to check if we're done iterating over our list so we need
-to add that missing information. Given that the code for tuples will be
-generated anyway, it's straightforward enough to add a `SIZE` constant.
 
+We can't use never type `!`
+([again/yet](https://github.com/rust-lang/rust/issues/35121)) so we'll resort to
+using unit `()` instead. Using `!` would've provided us with much cleaner error
+messages and automagically handled bounds checking we'll have to deal with at a
+later point. No matter, we will do without it.
 
 ```rust
 trait TypeList {
-    const SIZE: usize;
     type Head;
     type Tail: TypeList;
 }
 
 impl TypeList for () {
-    const SIZE: usize = 0;
     type Head = ();
     type Tail = ();
 }
 
 impl<A> TypeList for (A,) {
-    const SIZE: usize = 1;
     type Head = A;
     type Tail = ();
 }
 
 impl<A, B> TypeList for (A, B) {
-    const SIZE: usize = 2;
     type Head = A;
     type Tail = (B,);
 }
 
 impl<A, B, C> TypeList for (A, B, C) {
-    const SIZE: usize = 3;
     type Head = A;
     type Tail = (B, C);
 }
@@ -233,7 +237,6 @@ friendly neighborhood LLM to convert it into a macro for us:
 macro_rules! impl_type_list {
     () => {
         impl TypeList for () {
-            const SIZE: usize = 0;
             type Head = ();
             type Tail = ();
         }
@@ -241,7 +244,6 @@ macro_rules! impl_type_list {
     
     ($A:ident) => {
         impl<$A> TypeList for ($A,) {
-            const SIZE: usize = 1;
             type Head = $A;
             type Tail = ();
         }
@@ -249,7 +251,6 @@ macro_rules! impl_type_list {
     
     ($A:ident, $($B:ident),*) => {
         impl<$A, $($B),*> TypeList for ($A, $($B),*) {
-            const SIZE: usize = 1 + <($($B,)*) as TypeList>::SIZE;
             type Head = $A;
             type Tail = ($($B,)*);
         }
@@ -257,11 +258,8 @@ macro_rules! impl_type_list {
 }
 ```
 
-Sadly this was the last place where LLMs prooved useful and from this point on
-we're forced to not be replaced by AI 🤣
-
-And apply some magic I picked up from
-[`piccolo`](https://github.com/kyren/piccolo/issues/38#issuecomment-1819824923):
+And apply some macro magic I picked up from
+[`piccolo`](https://github.com/kyren/piccolo/issues/38#issuecomment-1819824923) 🪄:
 <div data-copy/>
 
 ```rust
@@ -293,7 +291,7 @@ macro_rules! all_supported_tuples {
 }
 ```
 
-And now we can combine the two macros to generate 64 implementations of the
+Combining the two macros allows us to generate 64 implementations of the
 trait with a single macro call:
 <div data-copy/>
 
@@ -303,8 +301,8 @@ all_supported_tuples!(impl_type_list);
 
 And just like that we've built a forward type iterator. You can give it a try in
 the
-[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=b4b5020a222aa2ea3cb93217187dff59)
-([gist](https://gist.github.com/rust-play/b4b5020a222aa2ea3cb93217187dff59)).
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=9bab9b8c8284f08f50a1d2269da203f6)
+([gist](https://gist.github.com/rust-play/9bab9b8c8284f08f50a1d2269da203f6)).
 
 You'll notice that it's quite a pickle to access n-th element as we have to
 reaffirm the type of `Tail` for each level.
@@ -326,244 +324,61 @@ type Ambiguous = u32::Error; // Which Error?
 type Explicit = <u32 as TryFrom<i32>>::Error; // TryFromIntError
 ```
 
+We'll deal with this issue in a later post, I just wanted to acknowledge it at
+this point. The operations we'll deal with in this post don't require indexing.
+
 ## Function Traits
 
-In order to make our lives easer, and turn the forward iterator into an actual
-type list, we'll define a `get` function. That is, we would generaly reach for
-functions to do that, but we're working with types instead of values, and
-functions return a value. Thus, we have to resort to using type declarations. As
-we'll have to perform operations on const numbers, and given that we're trying
-to do all of this in stable Rust, we'll use
-[`typenum`](https://github.com/paholg/typenum) crate.
+In order to map types, we have to figure out how to transfer the concept of a
+function into type space.
 
-Our `Get` function trait declaration is rather simple:
-<div data-copy/>
+When it comes to compiled languages, there's typically a clear hierarchy
+defining different types of data the compiler works with:
+
+- Kind
+- Type
+- Constant value
+- Runtime value
+
+We won't conscern ourself with kinds and I listed them mostly for completeness -
+AFAICT Rust doesn't have a concept of kinds (like [haskell
+does](https://wiki.haskell.org/Kind)).
+
+Conversion is (generally) only possible in the order the items are listed. In
+many cases the compiler handles conversion automatically (e.g. allowing us to
+call a const function with runtime arguments).
+
+So in order for our types to stay in the type space, all conversion has to
+happen inside it and we can't use constant functions for instance. That's
+because constant functions deal with values and we want to manipulate types.
+
+Rust allows us to handle type projection via type aliases much as C++ does. In
+Rust however, we rely on traits instead of classes for the same functionality:
 
 ```rust
-trait TypeIndex<N> {
+trait TypeSpaceFunction<T> {
+    type Value = (Transformed, T);
+}
+```
+
+One notable difference is that in Rust, we can associate trait implementations
+with some other data which simplifies how we handle conditionals:
+
+```rust
+trait SplitFunction {
     type Value;
 }
-```
-
-Our implementation of the trait (if it worked), would look something like:
-
-```rust
-use std::ops::Sub;
-use typenum::{Gr, Sub1, Unsigned, B0, B1};
-
-impl<L> TypeIndex<B0> for L
-where
-    L: TypeList,
-{
-    type Value = L::Head;
+impl<T> SplitFunction for MyType<T> {
+    type Value = T;
 }
-
-impl<N, L> TypeIndex<N> for L
-where
-    N: Unsigned + Sub<B1>,
-    L: TypeList,
-    Sub1<N>: Unsigned
-{
-    type Value = <L::Tail as TypeIndex<Sub1<N>>>::Value;
+impl<T> SplitFunction for [T; N] {
+    type Value = T;
 }
 ```
 
-The issue with the above code stems from the fact (as the compiler tells us)
-that `typenum` _could_ at some point implement `Sub1<N>: Unsigned` for `B0`.
-This is wrong as there's no number lesser than `N = 0` which would satisfy the
-`Unsigned` constraint, so `typenum` won't do that - the compiler can't
-understand that though.
-
-It's also true that at some point the upstream crate _might_ change and the
-compiler can't guarantee our bounds to hold true which would in term cause
-double/ambiguous implementation for `N = 0` case, evem though `typenum` would
-still work just fine.
-
-The compiler also gives us a hint through it's error message though - while we
-can't guarantee the upstream crate won't change and break our code, we _can_
-guarantee that _our_ code won't do so because then it won't compile. So what we
-need is to express the same semantics, only without relying on `typenum` as our
-discriminant between `L::Head` and `<L::Tail as Get<Sub1<N>>>::Value` cases.
-
-To achieve this we want to copy `Sub1` from typenum, which is a type alias:
-```rust
-type Sub1<N> = <N as std::op::Sub<B1>>::Output;
-```
-
-## Operators
-
-In order to do that, we need our own `Decrease` trait:
-
-```rust
-trait Decrease {
-    type Value;
-}
-
-impl Decrease for U1 {
-    type Value = U0;
-}
-
-impl Decrease for U2 {
-    type Value = U1;
-}
-
-impl Decrease for U3 {
-    type Value = U2;
-}
-// 61 more...
-```
-
-We can use macros again to reduce total amount of code:
-<div data-copy/>
-
-```rust
-trait Decrease {
-    type Value;
-}
-
-macro_rules! impl_decrease {
-    ($current:ident, $next:ident) => {
-        impl Decrease for typenum::$current {
-            type Value = typenum::$next;
-        }
-    };
-}
-
-macro_rules! all_seq_pairs {
-    ($m: ident, $ta: ident) => {};
-    ($m: ident, $ta: ident, $tb: ident) => {
-        $m!{$tb, $ta}
-    };
-    ($m: ident, $ta: ident, $tb: ident, $($tt: ident),*) => {
-        $m!{$tb, $ta}
-        all_seq_pairs!{$m, $tb, $($tt),*}
-    };
-}
-
-#[rustfmt::skip]
-all_seq_pairs!(impl_decrease,
-    U0,U1,U2,U3,U4,U5,U6,U7,U8,U9,
-    U10,U11,U12,U13,U14,U15,U16,U17,U18,U19,
-    U20,U21,U22,U23,U24,U25,U26,U27,U28,U29,
-    U30,U31,U32,U33,U34,U35,U36,U37,U38,U39,
-    U40,U41,U42,U43,U44,U45,U46,U47,U48,U49,
-    U50,U51,U52,U53,U54,U55,U56,U57,U58,U59,
-    U60,U61,U62,U63
-);
-```
-
-Now with our own decrement operator, we can finally express bounds for `Get`
-unambiguously:
-
-```rust
-impl<L> TypeIndex<typenum::U0> for L
-where
-    L: TypeList,
-{
-    type Value = L::Head;
-}
-
-impl<N, L> TypeIndex<N> for L
-where
-    N: Unsigned + Decrease,
-    L: TypeList,
-    <N as Decrease>::Value: Unsigned, // decreased value is unsigned
-    L::Tail: TypeIndex<<N as Decrease>::Value>, // tail must be indexable
-{
-    type Value = <L::Tail as TypeIndex<<N as Decrease>::Value>>::Value;
-}
-```
-
-With this nifty addition, we can substitute our previous chain of expressions
-with a single indexing operator and the compiler will do the rest:
-
-```rust
-type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
-```
-
-You can try out this code on
-[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=98836acb79ac49a15f465de5a010955a)
-([gist](https://gist.github.com/rust-play/98836acb79ac49a15f465de5a010955a)).
-
-Now that we've built the the getter, we have a good template to work with while
-implementing the rest of the operators we might need. In order to properly gauge
-that though it's time for us to start designing the user facing API so that we
-get a better idea of what our exact requirements are.
-
-## API-first approach
-
-Throught the previous section we've solved all major issues that would've
-prevented us from implementing the functionality we need if they didn't work
-out. Now that we know we _can_ do it, we need to focus on what it is we're
-trying to do.
-
-Previously I would've just built all the operators one might need for use of
-type lists, but I've since found that the top-to-bottom approach is a lot more
-time efficient as we won't be wasting time on funcionality we won't use.
-
-We want our `Model` trait to specify inputs and outputs in the type signature.
-The main issue with this is that traits need to generate a virtual table that's
-known to the compiler while `litesim` is being built. So the model **must** have
-a single method for handling all inputs/outputs.
-
-Implementation of that method is however allowed branch off based on
-input/output index i.e. index of type in `I`/`O` type tuple. Our current design
-allows for labeled inputs and outputs as well.
-
-A simplified version of a `litesim` model would now look like:
-```rust
-pub trait Event: 'static {}
-impl<T> Event for T where T: 'static {}
-
-pub trait Handler<'s, M, E>: Fn(&mut M, E) -> Result<(), String> + 'static {}
-impl<'s, M, E, F> Handler<'s, M, E> for F where F: Fn(&mut M, E) -> Result<(), String> + 'static {}
-
-trait Model<'s, I: TypeList, O: TypeList> {
-    fn input_connector<Index: Unsigned>(&self) -> (
-        &'s str,
-        &'s dyn Handler<'s, Self, <I as TypeIndex<Index>>::Value>,
-    )
-    where
-        I: TypeIndex<Index>;
-
-    // other methods...
-}
-```
-
-I removed error details, `Event` wrapper struct and `ModelCtx` for brievity, but
-they basically provide additional information about failiure, `Event` type
-information and the surrounding models (in respective order). For context, `'s`
-lifetime represents the sumulated system - no model or any of its connectors are
-expected to live longer than the whole simulation.
-
-We can see that:
-- `Event` is basically any static type (type known at compile time).
-- `Handler` is just a function that takes a mutable reference to the `Model` and
-  consumes an `Event`.
-- `Model::input_connector` takes a constant `Index` and should return the name
-  of the input and corresponding (static) `Handler` function.
-
-The issue with this approach however is that while the trait we specified is
-**valid**, it's next to impossible to implement properly. Even if the expected
-usage pattern worked for a single input:
-```rust
-impl<'s> Model<'s, (Ball,), ()> for Player {
-    fn input_connector<U0>(&self) -> (
-        &'s str,
-        &'s dyn Handler<'s, Self, Ball>,
-    )
-    where
-        U0: Unsigned,
-    {
-        let handler: &'s dyn Handler<'s, Self, Ball> = &|_model, _event| Ok(());
-        ("recieve", handler)
-    }
-}
-```
-the trait would still fail for multiple inputs due to "duplicate definitions"
-error and [specialization](https://github.com/rust-lang/rust/issues/31844) not
-being supported. In other words, we need to provide a single output from a
-function with a single definition that contains all the connectors.
+In C++ template metaprogramming, we'd rely on using ifs in constant expressions
+to achieve similar results because C++ allows evaluating types in constant
+expressions. Rust is more strict so the type system is separate.
 
 ## Type Mapping
 
@@ -571,20 +386,19 @@ In order to transform our list of inputs `(A, B, C)` into a return type we're
 expecting from our function:
 ```rust
 type Result = (
-    (&'static str, &'s dyn Handler<'s, Self, A>),
-    (&'static str, &'s dyn Handler<'s, Self, B>),
-    (&'static str, &'s dyn Handler<'s, Self, C>),
+    (&'static str, &'static dyn Handler<Self, A>),
+    (&'static str, &'static dyn Handler<Self, B>),
+    (&'static str, &'static dyn Handler<Self, C>),
 );
 ```
-we need a way to perform a mapping operation on types. This is where shit hits
-the fan as we're looking at a very complex transformation. We just to try hard
-enough though because it _is_ possible... somehow... I'm almost certain.
+we need a way to perform a mapping operation on types.
 
-Mapping is a composition of iteration (which we have), application and
-collection. So in order to perform application we need to figure out how to
-express it efficiently - ideally in a way we can re(ab)use multiple times.
+Mapping is a composition of iteration which we have already built, application
+of some projection and collection in the same container we iterated over. So in
+order to perform projection we need to figure out how to express it efficiently.
+Ideally in a way we can re(ab)use multiple times.
 
-### Apply operator
+### Apply Operator
 
 We start with a trait - our version of "call this thing":
 <div data-copy />
@@ -602,9 +416,10 @@ struct ToInputConnector<Model> {
 ```
 We're using `Phantom` in `ToInputConnector` because rust will require us to
 restrict `'s` while we're trying to implement `Apply` in the signature.
-`ToInputConnector` also contains any types which stay constant throughout the
+`ToInputConnector` also contains any types that stay constant throughout the
 mapping operation. The `ToInputConnector` type will never be constructed or used
-at runtime though as it's effectively just a _compile time function signature_.
+at runtime, as it's effectively used just as an implementation discriminant, so
+we don't need to worry about providing any constructors.
 
 Then we can specify how the method is applied, i.e. the body of the method:
 ```rust
@@ -617,26 +432,17 @@ where
 }
 ```
 You'll notice we're implementing the method for a tuple of method and arguments
-(in this case one), that's because we have no other way of passing compile time
-information into `Apply`:
+(in this case a single one), that's because we have no other way of passing
+compile time information into `Apply`:
 
 - If we tried storing `T` as a generic on `Apply`, we wouldn't be able to invoke
 it for different types.
-- Conversly, if we tried storing it on `ToInputConnector`, then out collector
+- Conversly, if we tried storing it on `ToInputConnector`, then our mapping
 wouldn't be agnostic with respect to method it's applying.
 
 So, in general, **variable types** are stored in the tuple we're calling `Apply`
-on and **non-variable types** (such as `M` in example case) should go into the
-signature struct (`ToInputConnector`).
-
-While writing this article I also noticed that mapping with lifetimes doesn't
-work, so I removed the system lifetime from `ToInputConnector` signature.
-Compiler seems to fail at normalizing associated types on a trait that is
-implemented for struct with a liftime ([minimal
-reproduction](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=b539abe29f693183c9b785c6f904f508);
-[rustc issue](https://github.com/rust-lang/rust/issues/106569)). For future
-reference, once the issue get fixed, lifetimes go on `ToInputConnector` or
-whatever your equivalent is if they don't change through the mapping.
+on and **non-variable types** (such as `M` in the example case) should go into
+the signature struct (`ToInputConnector`).
 
 Note that multiple variable arguments will change how you implement
 `TypeMapping` in the following section.
@@ -677,14 +483,23 @@ all_supported_tuples!(impl_mapping);
 for multiple variable types or lifetimes. They should be part of the tuple the
 `TypeMapping` is implemented for.
 
-You can see a simplified version without the invariant `M` (model) on the
-[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=47f94126ef98a825141343f04090dedb)([gist](https://gist.github.com/rust-play/47f94126ef98a825141343f04090dedb)).
+You can see a simplified version without the constant `M` type (for model) on the
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=10f15816801e32933ed6777c02da93d2)([gist](https://gist.github.com/rust-play/10f15816801e32933ed6777c02da93d2)).
 
-## API-first approach; attempt no. 2
+While writing this article, I also noticed that mapping with lifetimes doesn't
+seem to work, so I removed the system lifetime from `ToInputConnector`
+signature. Compiler seems to fail at normalizing associated types on a trait
+that is implemented for struct with a lifetime ([minimal
+reproduction](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=b539abe29f693183c9b785c6f904f508);
+[rustc issue](https://github.com/rust-lang/rust/issues/106569)). 
 
-Surely we have enough type support now to make use of it?!
+For future reference (once the issue get fixed), lifetimes go on the
+discriminant struct if they don't change through the mapping or are paired with
+types in tuples the `TypeMapping` is implemented for if they do.
 
-Our new `Model` and implementation for `Player` look as following:
+## Profit
+
+Our new `Model` trait and implementation for `Player` looks as following:
 ```rust
 struct ToInputConnector<Model> {
     _phantom: std::marker::PhantomData<Model>,
@@ -742,39 +557,42 @@ With that, connectors are done. I want to point out that the implementation
 above (somewhat) successfully replaces a whole bunch of complicated code that
 was previously generated by `#[litesim_model]`:
 ```rust
-fn input_connectors(&self) -> Vec<&'static str> {
-    vec!["receive"]
-}
-fn get_input_handler<'h>(&self, index: usize) -> Option<Box<dyn ErasedHandler<'h, 's>>>
-where
-    's: 'h,
-{
-    match index {
-        0usize => {
-            let handler: Box<&dyn Fn(&mut Player, Event<()>, ModelCtx<'s>) -> Result<(), SimulationError>> = Box::new(
-                &(|_: &mut Player, _: Event<()>, ctx: ModelCtx<'s>| {
-                    ctx.schedule_update(Now)?;
-                    Ok(())
-                }),
-            );
-            return Some(handler);
-        }
-        _ => return None,
+impl<'s> Model<'s> for Player {
+    fn input_connectors(&self) -> Vec<&'static str> {
+        vec!["receive"]
     }
-}
-fn output_connectors(&self) -> Vec<OutputConnectorInfo> {
-    vec![
-        OutputConnectorInfo::new::<()>("send"),
-    ]
+    fn get_input_handler<'h>(&self, index: usize) -> Option<Box<dyn ErasedHandler<'h, 's>>>
+    where
+        's: 'h,
+    {
+        match index {
+            0usize => {
+                let handler: Box<&dyn Handler<&mut Player, Event<()>) -> Result<(), SimulationError>> = Box::new(
+                    &(|_: &mut Player, _: Event<()>| {
+                        // details...
+                    }),
+                );
+                return Some(handler);
+            }
+            _ => return None,
+        }
+    }
+    fn output_connectors(&self) -> Vec<OutputConnectorInfo> {
+        vec![
+            OutputConnectorInfo::new::<()>("send"),
+        ]
+    }
+    // other functions...
 }
 ```
 
 Notably:
 - We got rid of type erasure for `Handler`.
-  - Now the `Model` will have to be type erased in order for us to store it in a
+  - Now the `Model` will have to be type-erased in order for us to store it in a
     `Vec`. That's however much safer and we can now hide a whole bunch of
-    implementation details from end-user.
-- Type signature dictates the number of connector labels and handlers which
+    implementation details from end-users (e.g. `ErasedHandler`,
+    `OutputConnectorInfo`).
+- Type signature dictates the number of connector labels and handlers, which
   prevents invalid use.
   - Previously, the library would internally panic with somewhat obscure stack
     traces which made it hard for end-users to realize they're violating API
@@ -786,11 +604,13 @@ Notably:
   - `O(n)` doesn't capture the fact that we could've had _a lot_ of jumps on our
     hot path.
 
-In the process we've also lost ability to change the number of inputs/outputs at
-runtime, but that part of functionality required a rework anyway as it wasn't
-completely sound. 
+In the process, we've also lost the ability to change the number of inputs and
+outputs at runtime, but that part of functionality required a rework anyway as
+it wasn't completely sound. I was forced to use `Vec` with dynamic type checking
+without code introduced in this article. The original plan was defining a
+separate `DynamicModel` trait so that `litesim` can avoid runtime type checking
+for models with static interfaces.
 
-We'll deal with consumption of generated type signatures in a later post. We
-didn't actually need the `TypeIndex` to express the trait at hand, but it will
-be necessary for consuming generated types. In a later post I'll also go over
-how we can bridge indices from runtime to compile time.
+We'll deal with the consumption of generated type signatures in a later post, as
+well as going over how we can write a getter for our type lists and bridge
+indices from runtime to compile time.

@@ -1,0 +1,165 @@
+---
+title: "Rust Metaprogramming - Part 2"
+summary: "Can't do nothin' with types you can't access. In this post I cover how to access type lists built in the previous article."
+tags:
+  - Rust
+  - metaprogramming
+  - abstraction
+---
+
+## Lower Bounds
+
+In order to make our lives easier, and allow ourselves to treat the forward type
+iterator as an actual type list, we'll define a `get` function.
+
+As we'll have to perform operations on const numbers we'll use
+[`typenum`](https://github.com/paholg/typenum) crate. Rust does support [const generics](https://github.com/rust-lang/rust/issues/44580), but  
+
+Our `Get` function trait declaration is rather simple:
+<div data-copy/>
+
+```rust
+trait TypeIndex<N> {
+    type Value;
+}
+```
+
+Our implementation of the trait (if it worked), would look something like:
+
+```rust
+use std::ops::Sub;
+use typenum::{Gr, Sub1, Unsigned, B0, B1};
+
+impl<L> TypeIndex<B0> for L
+where
+    L: TypeList,
+{
+    type Value = L::Head;
+}
+
+impl<N, L> TypeIndex<N> for L
+where
+    N: Unsigned + Sub<B1>,
+    L: TypeList,
+    Sub1<N>: Unsigned
+{
+    type Value = <L::Tail as TypeIndex<Sub1<N>>>::Value;
+}
+```
+
+The compiler errors with the above code, stating that `typenum` _could_ at some
+point implement `Sub1<N>: Unsigned` for `B0`. This is wrong as there's no number
+lesser than `N = 0` which would satisfy the `Unsigned` constraint, so `typenum`
+won't do that - the compiler can't understand semantics though.
+
+The compiler also gives us a hint on how to solve this through that same error
+message: while we can't guarantee the **upstream** crate won't change and break
+our code, we _can_ guarantee that _our_ code won't do so because then it won't
+compile. So what we need is to express the same semantics, only without relying
+on `typenum` as our discriminant between `L::Head` and `<L::Tail as
+Get<Sub1<N>>>::Value` cases.
+
+To achieve this we want to copy `Sub1` from typenum, which is a type alias:
+```rust
+type Sub1<N> = <N as std::op::Sub<B1>>::Output;
+```
+
+## Operators
+
+In order to do that, we need our own `Decrease` trait:
+
+```rust
+trait Decrease {
+    type Value;
+}
+
+impl Decrease for U1 {
+    type Value = U0;
+}
+
+impl Decrease for U2 {
+    type Value = U1;
+}
+
+impl Decrease for U3 {
+    type Value = U2;
+}
+// 61 more...
+```
+
+We can use macros again to reduce total amount of code:
+<div data-copy/>
+
+```rust
+trait Decrease {
+    type Value;
+}
+
+macro_rules! impl_decrease {
+    ($current:ident, $next:ident) => {
+        impl Decrease for typenum::$current {
+            type Value = typenum::$next;
+        }
+    };
+}
+
+macro_rules! all_seq_pairs {
+    ($m: ident, $ta: ident) => {};
+    ($m: ident, $ta: ident, $tb: ident) => {
+        $m!{$tb, $ta}
+    };
+    ($m: ident, $ta: ident, $tb: ident, $($tt: ident),*) => {
+        $m!{$tb, $ta}
+        all_seq_pairs!{$m, $tb, $($tt),*}
+    };
+}
+
+#[rustfmt::skip]
+all_seq_pairs!(impl_decrease,
+    U0,U1,U2,U3,U4,U5,U6,U7,U8,U9,
+    U10,U11,U12,U13,U14,U15,U16,U17,U18,U19,
+    U20,U21,U22,U23,U24,U25,U26,U27,U28,U29,
+    U30,U31,U32,U33,U34,U35,U36,U37,U38,U39,
+    U40,U41,U42,U43,U44,U45,U46,U47,U48,U49,
+    U50,U51,U52,U53,U54,U55,U56,U57,U58,U59,
+    U60,U61,U62,U63
+);
+```
+
+Now with our own decrement operator, we can finally express bounds for `Get`
+unambiguously:
+
+```rust
+impl<L> TypeIndex<typenum::U0> for L
+where
+    L: TypeList,
+{
+    type Value = L::Head;
+}
+
+impl<N, L> TypeIndex<N> for L
+where
+    N: Unsigned + Decrease,
+    L: TypeList,
+    <N as Decrease>::Value: Unsigned, // decreased value is unsigned
+    L::Tail: TypeIndex<<N as Decrease>::Value>, // tail must be indexable
+{
+    type Value = <L::Tail as TypeIndex<<N as Decrease>::Value>>::Value;
+}
+```
+
+With this nifty addition, we can substitute our previous chain of expressions
+with a single indexing operator and the compiler will do the rest:
+
+```rust
+type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
+```
+
+You can try out this code on
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=98836acb79ac49a15f465de5a010955a)
+([gist](https://gist.github.com/rust-play/98836acb79ac49a15f465de5a010955a)).
+
+Now that we've built the the getter, we have a good template to work with while
+implementing the rest of the operators we might need. In order to properly gauge
+that though it's time for us to start designing the user facing API so that we
+get a better idea of what our exact requirements are.
