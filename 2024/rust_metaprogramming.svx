@@ -145,7 +145,9 @@ In order to have a useful type list, we need methods to at least:
 
 Type lists in C++ metaprogramming are built on the same principles, though they
 are nicer to work with because of vararg generic support. Ideally, our _type
-list_ type would be zero sized but given that tuples _are_ sized we can get around it by storing our type list as an empty array (`[TypeList; 0]`). `Phantom` might be more appropriate for this kind of use though.
+list_ type would be zero sized but given that tuples _are_ sized we can get
+around it by storing our type list as an empty array (`[TypeList; 0]`).
+`Phantom` might be more appropriate for this kind of use though.
 
 ## Practice
 
@@ -256,6 +258,22 @@ macro_rules! smaller_tuples_too {
         $m!{$ty, $($tt),*}
     };
 }
+
+// short for calling smaller_tuples_too with 64 arguments
+macro_rules! all_supported_tuples {
+    ($m: ident) => {
+        #[rustfmt::skip]
+        smaller_tuples_too!($m,
+            A, B, C, D, E, F, G, H, I, J,
+            K, L, M, N, O, P, Q, R, S, T,
+            U, V, W, X, Y, Z, AA, AB, AC, AD,
+            AE, AF, AG, AH, AI, AJ, AK, AL, AM, AN,
+            AO, AP, AQ, AR, AS, AT, AU, AV, AW, AX,
+            AY, AZ, BA, BB, BC, BD, BE, BF, BG, BH,
+            BI, BJ, BK, BL
+        );
+    };
+}
 ```
 
 And now we can combine the two macros to generate 64 implementations of the
@@ -263,16 +281,7 @@ trait with a single macro call:
 <div data-copy/>
 
 ```rust
-#[rustfmt::skip]
-smaller_tuples_too!(impl_type_list,
-    A, B, C, D, E, F, G, H, I, J,
-    K, L, M, N, O, P, Q, R, S, T,
-    U, V, W, X, Y, Z, AA, AB, AC, AD,
-    AE, AF, AG, AH, AI, AJ, AK, AL, AM, AN,
-    AO, AP, AQ, AR, AS, AT, AU, AV, AW, AX,
-    AY, AZ, BA, BB, BC, BD, BE, BF, BG, BH,
-    BI, BJ, BK, BL
-);
+all_supported_tuples!(impl_type_list);
 ```
 
 And just like that we've built a forward type iterator. You can give it a try in
@@ -426,7 +435,8 @@ all_seq_pairs!(impl_decrease,
 );
 ```
 
-Now with our own decrement operator, we can finally express bounds for `Get` unambiguously:
+Now with our own decrement operator, we can finally express bounds for `Get`
+unambiguously:
 
 ```rust
 impl<L> TypeIndex<typenum::U0> for L
@@ -447,18 +457,21 @@ where
 }
 ```
 
-With this nifty addition, we can substitute our previous chain of expressions with a single indexing operator and the compiler will do the rest:
+With this nifty addition, we can substitute our previous chain of expressions
+with a single indexing operator and the compiler will do the rest:
 
 ```rust
 type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
 ```
 
-You can try out this code on [playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=98836acb79ac49a15f465de5a010955a) ([gist](https://gist.github.com/rust-play/98836acb79ac49a15f465de5a010955a)).
+You can try out this code on
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=98836acb79ac49a15f465de5a010955a)
+([gist](https://gist.github.com/rust-play/98836acb79ac49a15f465de5a010955a)).
 
-Now that we've built the the getter, we have a good template to work with
-while implementing the rest of the operators we might need. In order to properly
-gauge that though it's time for us to start designing the user facing API so
-that we get a better idea of what our exact requirements are.
+Now that we've built the the getter, we have a good template to work with while
+implementing the rest of the operators we might need. In order to properly gauge
+that though it's time for us to start designing the user facing API so that we
+get a better idea of what our exact requirements are.
 
 ## API-first approach
 
@@ -474,9 +487,14 @@ turn the code in this article into a library, only _then_ bottom-to-top approach
 would be a better fit - but as it currently stands, we're trying to solve a real
 issues and not just play around with capabilities of the type system.
 
-We want our `Model` trait to specify inputs and outputs in the type signature. The main issue with this is that traits need to generate a virtual table that's known to the compiler while `litesim` is being built. So the model **must** have a single method for handling all inputs/outputs.
+We want our `Model` trait to specify inputs and outputs in the type signature.
+The main issue with this is that traits need to generate a virtual table that's
+known to the compiler while `litesim` is being built. So the model **must** have
+a single method for handling all inputs/outputs.
 
-Implementation of that method is however allowed branch off based on input/output index i.e. index of type in `I`/`O` type tuple. Our current design allows for labeled inputs and outputs as well.
+Implementation of that method is however allowed branch off based on
+input/output index i.e. index of type in `I`/`O` type tuple. Our current design
+allows for labeled inputs and outputs as well.
 
 A simplified version of a `litesim` model would now look like:
 ```rust
@@ -498,14 +516,22 @@ trait Model<'s, I: TypeList, O: TypeList> {
 }
 ```
 
-I removed error details, `Event` wrapper struct and `ModelCtx` for brievity, but they basically provide additional information about failiure, `Event` type information and the surrounding models (in respective order). For context, `'s` lifetime represents the sumulated system - no model or any of its handlers are expected to live longer than the whole simulation.
+I removed error details, `Event` wrapper struct and `ModelCtx` for brievity, but
+they basically provide additional information about failiure, `Event` type
+information and the surrounding models (in respective order). For context, `'s`
+lifetime represents the sumulated system - no model or any of its handlers are
+expected to live longer than the whole simulation.
 
 We can see that:
 - `Event` is basically any static type (type known at compile time).
-- `Handler` is just a function that takes a mutable reference to the `Model` and consumes an `Event`.
-- `Model::input_handler` takes a constant `Index` and should return the name of the input and corresponding (static) `Handler` function.
+- `Handler` is just a function that takes a mutable reference to the `Model` and
+  consumes an `Event`.
+- `Model::input_handler` takes a constant `Index` and should return the name of
+  the input and corresponding (static) `Handler` function.
 
-The issue with this approach however is that while the trait we specified is **valid**, it's next to impossible to implement properly. Even if the expected usage pattern worked for a single input:
+The issue with this approach however is that while the trait we specified is
+**valid**, it's next to impossible to implement properly. Even if the expected
+usage pattern worked for a single input:
 ```rust
 impl<'s> Model<'s, (Ball,), ()> for Player {
     fn input_handler<U0>() -> (
@@ -520,11 +546,15 @@ impl<'s> Model<'s, (Ball,), ()> for Player {
     }
 }
 ```
-the trait would still fail for multiple inputs due to "duplicate definitions" error and [specialization](https://github.com/rust-lang/rust/issues/31844) not being supported. In other words, we need to provide a single output from a function with a single definition that contains all the handlers.
+the trait would still fail for multiple inputs due to "duplicate definitions"
+error and [specialization](https://github.com/rust-lang/rust/issues/31844) not
+being supported. In other words, we need to provide a single output from a
+function with a single definition that contains all the handlers.
 
 ## Type Mapping
 
-In order to transform our list of inputs `(A, B, C)` into a return type we're expecting from our function:
+In order to transform our list of inputs `(A, B, C)` into a return type we're
+expecting from our function:
 ```rust
 type Result = (
     (&'s str, &'s dyn Handler<'s, Self, A>),
@@ -532,37 +562,88 @@ type Result = (
     (&'s str, &'s dyn Handler<'s, Self, C>),
 );
 ```
-we need a way to perform a mapping operation on types. This is where shit hits the fan as we're looking at a very complex transformation. We just to try hard enough though because it _is_ possible... somehow... I'm almost certain.
+we need a way to perform a mapping operation on types. This is where shit hits
+the fan as we're looking at a very complex transformation. We just to try hard
+enough though because it _is_ possible... somehow... I'm almost certain.
 
-Mapping is a composition of iteration (which we have), application and collection. So in order to perform application we need to figure out how to express it efficiently - ideally in a way we can re(ab)use multiple times.
+Mapping is a composition of iteration (which we have), application and
+collection. So in order to perform application we need to figure out how to
+express it efficiently - ideally in a way we can re(ab)use multiple times.
 
-We start with a trait (our version of "operator"):
+### Apply operator
+
+We start with a trait - our version of "call this thing":
+<div data-copy />
+
 ```rust
-trait Mapping<T> {
+trait Apply {
     type Value;
 }
 ```
-and implement it for our use case:
+and declare our "method":
 ```rust
-struct OurResult<'s> {
+struct ToHandler<'s> {
     _phantom: std::marker::PhantomData<&'s ()>,
 }
-impl OurResult<'_> {
-    const fn new() -> Self {
-        Self {
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
+```
+We're using `Phantom` in `ToHandler` because rust will require us to restrict
+`'s` while we're trying to implement `Apply` in the signature. The `ToHandler`
+type will never be constructed or used at runtime though as it's effectively
+just a _compile time function signature_.
 
-impl<'s, T> Mapping<T> for OurResult<'s>
+Then we can specify how the method is applied, i.e. the body of the method:
+```rust
+impl<'s, T> Apply for (ToHandler<'s>, T)
 where
     T: 'static,
 {
     type Value = (&'s str, &'s dyn Handler<'s, Self, T>);
 }
 ```
+You'll notice we're implementing the method for a tuple of method and arguments
+(in this case one), that's because we have no other way of passing compile time
+information into `Apply`. If we tried storing `T` as a generic on `Apply`, we
+wouldn't be able to invoke it for different types. Conversly, if we tried
+storing it on `ToHandler`, then out collector wouldn't be generalizable as it
+would also have to deal with `ToHandler` types.
 
-We're using `Phantom` in `OurResult` because rust requires us to restrict `'s` in `Mapping<T>` implementation in the signature. I'd use `#[derive(Default)]`, but we need `OurResult` to be const-constructible.
+If your use case calls for multiple arguments which can change throughout the
+same type evaluation, this tuple is the appropriate place to add them. Note that
+multiple arguments will change how you implement `TypeMapping` in the following
+section.
 
-Now that we're done with application part of our mapping, we need a collector that would allow us to create a tuple from a list of mapped input types.
+### Collector
+
+Now that we're done with _application_ part of our mapping, we need a
+**collector** that would allow us to create a tuple from a list of mapped input
+types.
+
+Sadly, this is a place we have to declare multiple implementations again for
+each tuple size. As always, macros come to the rescue:
+<div data-copy />
+
+```rust
+macro_rules! impl_mapping {
+    () => {
+        impl<Method> TypeMapping<Method> for ()
+        {
+            type Value = ();
+        }
+    };
+    ($($A: ident),+) => {
+        impl<Method, $($A),+> TypeMapping<Method> for ($($A,)+)
+        where
+            $((Method, $A): Apply),+
+        {
+            type Value = (
+                $(<(Method, $A) as Apply>::Value,)+
+            );
+        }
+    };
+}
+
+all_supported_tuples!(impl_mapping);
+```
+
+You can try the code we currently have on
+[`playground`](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=47f94126ef98a825141343f04090dedb)([gist](https://gist.github.com/rust-play/47f94126ef98a825141343f04090dedb)).
