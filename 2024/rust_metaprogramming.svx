@@ -1,6 +1,7 @@
 ---
 title: "Rust Metaprogramming"
 summary: "They say macros are Rust equivalent of C++ metaprograming; I beg to differ."
+date: "2024-01-05"
 tags:
   - Rust
   - metaprogramming
@@ -15,26 +16,39 @@ reason I wrote it was...
 - I needed filler for the essay as I covered the assigned topic and didn't have
   very many pages.
 
-First of all, event simulation is a weird topic. While lookig up related
-literature and resources I got a vibe that it was much more popular 10-ish years
-ago, and I'm not sure why the hype died down. In library space there's very few
-solutions being actively maintained.
-
 Notable ones (from my limited search) are
-[`sympy`](https://gitlab.com/team-simpy/simpy) and
-[`asynchronix`](https://github.com/asynchronics/asynchronix).
+[`sympy`](https://gitlab.com/team-simpy/simpy) as the most used one by the
+mainstream and [`asynchronix`](https://github.com/asynchronics/asynchronix) as
+the most unique one.
 
 ## Introduction
+
+While looking up related literature and resources I got a vibe that it was much
+more popular 10-ish years ago, and I'm not sure why the hype died down. In
+library space there's very few solutions being actively maintained.
 
 I wanted to build something dumb simple to use that doesn't have as steep
 learning curve as some other solutions in the space so I made
 [`litesim`](https://github.com/Caellian/litesim) (and descibed it in the essay
-😄).
+😄). My teacher was like:
+
+> I'm not sure _why_ you did it, that's more than I asked for. <span
+> data-paraphrase></span>
+
+which I guess is true, but I also felt like there was nothing simple enough for
+use cases like mine where I was on a tight schedule and needed to write a
+simulation **fast** without wasting time learning how to use 10 new concepts
+introduced by a tool that's supposed to make things simpler.
+
+So instead of making a simulation I made a discrete event simulation library
+that I felt was the appropriate substitute. You could argue that the library was
+a bigger waste of time, but don't try me because I win arguments even when I
+know I'm wrong. <span data-tone=half-joke></span>
 
 ### LiteSim
 
 Cool thing about litesim is that it basically erases all simulation internals
-and leaves you with a clean slate. It's based on
+and leaves you with a clean slate when you're modelling a system. It's based on
 [DEVS](https://en.wikipedia.org/wiki/DEVS) so the whole simulation is built out
 of composable models. The only structs the user needs to interact with are
 `SystemModel` and `Simulation`.
@@ -483,12 +497,9 @@ prevented us from implementing the functionality we need if they didn't work
 out. Now that we know we _can_ do it, we need to focus on what it is we're
 trying to do.
 
-Previously I would've just built all the operators one might need to use type
-lists, but I've since found that the top-to-bottom approach is a lot more time
-efficient as we won't be wasting time on funcionality we won't use. If I ever
-turn the code in this article into a library, only _then_ bottom-to-top approach
-would be a better fit - but as it currently stands, we're trying to solve a real
-issues and not just play around with capabilities of the type system.
+Previously I would've just built all the operators one might need for use of
+type lists, but I've since found that the top-to-bottom approach is a lot more
+time efficient as we won't be wasting time on funcionality we won't use.
 
 We want our `Model` trait to specify inputs and outputs in the type signature.
 The main issue with this is that traits need to generate a virtual table that's
@@ -508,7 +519,7 @@ pub trait Handler<'s, M, E>: Fn(&mut M, E) -> Result<(), String> + 'static {}
 impl<'s, M, E, F> Handler<'s, M, E> for F where F: Fn(&mut M, E) -> Result<(), String> + 'static {}
 
 trait Model<'s, I: TypeList, O: TypeList> {
-    fn input_handler<Index: Unsigned>() -> (
+    fn input_connector<Index: Unsigned>(&self) -> (
         &'s str,
         &'s dyn Handler<'s, Self, <I as TypeIndex<Index>>::Value>,
     )
@@ -522,22 +533,22 @@ trait Model<'s, I: TypeList, O: TypeList> {
 I removed error details, `Event` wrapper struct and `ModelCtx` for brievity, but
 they basically provide additional information about failiure, `Event` type
 information and the surrounding models (in respective order). For context, `'s`
-lifetime represents the sumulated system - no model or any of its handlers are
+lifetime represents the sumulated system - no model or any of its connectors are
 expected to live longer than the whole simulation.
 
 We can see that:
 - `Event` is basically any static type (type known at compile time).
 - `Handler` is just a function that takes a mutable reference to the `Model` and
   consumes an `Event`.
-- `Model::input_handler` takes a constant `Index` and should return the name of
-  the input and corresponding (static) `Handler` function.
+- `Model::input_connector` takes a constant `Index` and should return the name
+  of the input and corresponding (static) `Handler` function.
 
 The issue with this approach however is that while the trait we specified is
 **valid**, it's next to impossible to implement properly. Even if the expected
 usage pattern worked for a single input:
 ```rust
 impl<'s> Model<'s, (Ball,), ()> for Player {
-    fn input_handler<U0>() -> (
+    fn input_connector<U0>(&self) -> (
         &'s str,
         &'s dyn Handler<'s, Self, Ball>,
     )
@@ -552,7 +563,7 @@ impl<'s> Model<'s, (Ball,), ()> for Player {
 the trait would still fail for multiple inputs due to "duplicate definitions"
 error and [specialization](https://github.com/rust-lang/rust/issues/31844) not
 being supported. In other words, we need to provide a single output from a
-function with a single definition that contains all the handlers.
+function with a single definition that contains all the connectors.
 
 ## Type Mapping
 
@@ -585,19 +596,19 @@ trait Apply {
 ```
 and declare our "method":
 ```rust
-struct ToHandler<Model> {
+struct ToInputConnector<Model> {
     _phantom: std::marker::PhantomData<Model>,
 }
 ```
-We're using `Phantom` in `ToHandler` because rust will require us to restrict
-`'s` while we're trying to implement `Apply` in the signature. `ToHandler` also
-contains any types which stay constant throughout the mapping operation. The
-`ToHandler` type will never be constructed or used at runtime though as it's
-effectively just a _compile time function signature_.
+We're using `Phantom` in `ToInputConnector` because rust will require us to
+restrict `'s` while we're trying to implement `Apply` in the signature.
+`ToInputConnector` also contains any types which stay constant throughout the
+mapping operation. The `ToInputConnector` type will never be constructed or used
+at runtime though as it's effectively just a _compile time function signature_.
 
 Then we can specify how the method is applied, i.e. the body of the method:
 ```rust
-impl<M, T> Apply for (ToHandler<M>, T)
+impl<M, T> Apply for (ToInputConnector<M>, T)
 where
     M: 'static,
     T: 'static,
@@ -611,15 +622,24 @@ information into `Apply`:
 
 - If we tried storing `T` as a generic on `Apply`, we wouldn't be able to invoke
 it for different types.
-- Conversly, if we tried storing it on `ToHandler`, then out collector wouldn't
-be agnostic with respect to method it's applying.
+- Conversly, if we tried storing it on `ToInputConnector`, then out collector
+wouldn't be agnostic with respect to method it's applying.
 
-So, in general, **variable types** are stored in the tuple we're calling `Apply` on and **non-variable types** (such as `M` in my case) should go into the signature struct (`ToHandler`).
+So, in general, **variable types** are stored in the tuple we're calling `Apply`
+on and **non-variable types** (such as `M` in example case) should go into the
+signature struct (`ToInputConnector`).
 
-While writing this article I also noticed that mapping with lifetimes doesn't work, so I removed the system lifetime from `Handler` signature. This seems like a type checker bug though so it might get fixed at some point.
+While writing this article I also noticed that mapping with lifetimes doesn't
+work, so I removed the system lifetime from `ToInputConnector` signature.
+Compiler seems to fail at normalizing associated types on a trait that is
+implemented for struct with a liftime ([minimal
+reproduction](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=b539abe29f693183c9b785c6f904f508);
+[rustc issue](https://github.com/rust-lang/rust/issues/106569)). For future
+reference, once the issue get fixed, lifetimes go on `ToInputConnector` or
+whatever your equivalent is if they don't change through the mapping.
 
-Note that multiple variable arguments will change how you implement `TypeMapping` in the
-following section.
+Note that multiple variable arguments will change how you implement
+`TypeMapping` in the following section.
 
 ### Collector
 
@@ -653,8 +673,12 @@ macro_rules! impl_mapping {
 
 all_supported_tuples!(impl_mapping);
 ```
+`TypeMapping` implementations here will change somewhat if your use case calls
+for multiple variable types or lifetimes. They should be part of the tuple the
+`TypeMapping` is implemented for.
 
-You can see a simplified version without the invariant `M` (model) on the [playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=47f94126ef98a825141343f04090dedb)([gist](https://gist.github.com/rust-play/47f94126ef98a825141343f04090dedb)).
+You can see a simplified version without the invariant `M` (model) on the
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=47f94126ef98a825141343f04090dedb)([gist](https://gist.github.com/rust-play/47f94126ef98a825141343f04090dedb)).
 
 ## API-first approach; attempt no. 2
 
@@ -662,23 +686,50 @@ Surely we have enough type support now to make use of it?!
 
 Our new `Model` and implementation for `Player` look as following:
 ```rust
-trait Model<'s, I: TypeList, O: TypeList>: Sized {
-    fn input_handlers() -> <I as TypeMapping<ToHandler<Self>>>::Value
-    where
-        I: TypeMapping<ToHandler<Self>>;
+struct ToInputConnector<Model> {
+    _phantom: std::marker::PhantomData<Model>,
+}
+impl<M, T> Apply for (ToInputConnector<M>, T)
+where
+    M: 'static,
+    T: 'static,
+{
+    type Value = (&'static str, &'static dyn Handler<M, T>);
+}
+struct ToOutputConnector;
+impl<T> Apply for (ToOutputConnector, T)
+    T: 'static,
+{
+    type Value = &'static str;
+}
 
-    // other methods...
+trait Model<'s, I: TypeList, O: TypeList>: Sized {
+    fn input_connectors(&self) -> <I as TypeMapping<ToInputConnector<Self>>>::Value
+    where
+        I: TypeMapping<ToInputConnector<Self>>;
+
+    fn output_connectors(&self) -> <O as TypeMapping<ToOutputConnector>>::Value
+    where
+        O: TypeMapping<ToOutputConnector>;
+
+    // other functions...
 }
 
 struct Ball;
 struct Player;
 
-impl<'s> Model<'s, (Ball,), ()> for Player {
-    fn input_handlers() -> <(Ball,) as TypeMapping<ToHandler<Self>>>::Value
+impl<'s> Model<'s, (Ball,), (Ball,)> for Player {
+    fn input_connectors(&self) -> <(Ball,) as TypeMapping<ToInputConnector<Self>>>::Value
     where
-        (Ball,): TypeMapping<ToHandler<Self>>,
+        (Ball,): TypeMapping<ToInputConnector<Self>>,
     {
         (("recieve", handle_ball),)
+    }
+    fn output_connectors(&self) -> <(Ball,) as TypeMapping<ToOutputConnector>>::Value
+    where
+        (Ball,): TypeMapping<ToOutputConnector>,
+    {
+        ("send",)
     }
 }
 
@@ -687,4 +738,59 @@ fn handle_ball(_model: &mut Player, _event: Ball) -> Result<(), String> {
 }
 ```
 
-With that, we're done with writing `input_handlers`.
+With that, connectors are done. I want to point out that the implementation
+above (somewhat) successfully replaces a whole bunch of complicated code that
+was previously generated by `#[litesim_model]`:
+```rust
+fn input_connectors(&self) -> Vec<&'static str> {
+    vec!["receive"]
+}
+fn get_input_handler<'h>(&self, index: usize) -> Option<Box<dyn ErasedHandler<'h, 's>>>
+where
+    's: 'h,
+{
+    match index {
+        0usize => {
+            let handler: Box<&dyn Fn(&mut Player, Event<()>, ModelCtx<'s>) -> Result<(), SimulationError>> = Box::new(
+                &(|_: &mut Player, _: Event<()>, ctx: ModelCtx<'s>| {
+                    ctx.schedule_update(Now)?;
+                    Ok(())
+                }),
+            );
+            return Some(handler);
+        }
+        _ => return None,
+    }
+}
+fn output_connectors(&self) -> Vec<OutputConnectorInfo> {
+    vec![
+        OutputConnectorInfo::new::<()>("send"),
+    ]
+}
+```
+
+Notably:
+- We got rid of type erasure for `Handler`.
+  - Now the `Model` will have to be type erased in order for us to store it in a
+    `Vec`. That's however much safer and we can now hide a whole bunch of
+    implementation details from end-user.
+- Type signature dictates the number of connector labels and handlers which
+  prevents invalid use.
+  - Previously, the library would internally panic with somewhat obscure stack
+    traces which made it hard for end-users to realize they're violating API
+    requirements.
+- Accessing a handler function and connector names is now (at least on this
+  level) a `O(1)` operation instead of `O(n)`.
+  - As the compiler knows where are handlers are, it can go crazy with
+    optimizations.
+  - `O(n)` doesn't capture the fact that we could've had _a lot_ of jumps on our
+    hot path.
+
+In the process we've also lost ability to change the number of inputs/outputs at
+runtime, but that part of functionality required a rework anyway as it wasn't
+completely sound. 
+
+We'll deal with consumption of generated type signatures in a later post. We
+didn't actually need the `TypeIndex` to express the trait at hand, but it will
+be necessary for consuming generated types. In a later post I'll also go over
+how we can bridge indices from runtime to compile time.
