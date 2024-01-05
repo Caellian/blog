@@ -20,8 +20,9 @@ literature and resources I got a vibe that it was much more popular 10-ish years
 ago, and I'm not sure why the hype died down. In library space there's very few
 solutions being actively maintained.
 
-Notable ones (in my opinion) are [`sympy`](https://gitlab.com/team-simpy/simpy)
-and [`asynchronix`](https://github.com/asynchronics/asynchronix).
+Notable ones (from my limited search) are
+[`sympy`](https://gitlab.com/team-simpy/simpy) and
+[`asynchronix`](https://github.com/asynchronics/asynchronix).
 
 ## Introduction
 
@@ -139,7 +140,7 @@ In order to have a useful type list, we need methods to at least:
 - access type list **size**,
 - access **head** element,
 - access list **tail**,
-- access and
+- access n-th element, and
 - check if `T` is contained in the list.
 
 Type lists in C++ metaprogramming are built on the same principles, though they
@@ -205,6 +206,7 @@ impl<A, B, C> TypeList for (A, B, C) {
     type Head = A;
     type Tail = (B, C);
 }
+// 61 more...
 ```
 
 Now that we've written out the first four cases, we can politely ask our
@@ -407,8 +409,8 @@ macro_rules! all_seq_pairs {
         $m!{$tb, $ta}
     };
     ($m: ident, $ta: ident, $tb: ident, $($tt: ident),*) => {
-        all_seq_pairs!{$m, $tb, $($tt),*}
         $m!{$tb, $ta}
+        all_seq_pairs!{$m, $tb, $($tt),*}
     };
 }
 
@@ -420,7 +422,7 @@ all_seq_pairs!(impl_decrease,
     U30,U31,U32,U33,U34,U35,U36,U37,U38,U39,
     U40,U41,U42,U43,U44,U45,U46,U47,U48,U49,
     U50,U51,U52,U53,U54,U55,U56,U57,U58,U59,
-    U60,U61,U62,U63,U64
+    U60,U61,U62,U63
 );
 ```
 
@@ -475,3 +477,92 @@ issues and not just play around with capabilities of the type system.
 We want our `Model` trait to specify inputs and outputs in the type signature. The main issue with this is that traits need to generate a virtual table that's known to the compiler while `litesim` is being built. So the model **must** have a single method for handling all inputs/outputs.
 
 Implementation of that method is however allowed branch off based on input/output index i.e. index of type in `I`/`O` type tuple. Our current design allows for labeled inputs and outputs as well.
+
+A simplified version of a `litesim` model would now look like:
+```rust
+pub trait Event: 'static {}
+impl<T> Event for T where T: 'static {}
+
+pub trait Handler<'s, M, E>: Fn(&mut M, E) -> Result<(), String> + 'static {}
+impl<'s, M, E, F> Handler<'s, M, E> for F where F: Fn(&mut M, E) -> Result<(), String> + 'static {}
+
+trait Model<'s, I: TypeList, O: TypeList> {
+    fn input_handler<Index: Unsigned>() -> (
+        &'s str,
+        &'s dyn Handler<'s, Self, <I as TypeIndex<Index>>::Value>,
+    )
+    where
+        I: TypeIndex<Index>;
+
+    // other methods...
+}
+```
+
+I removed error details, `Event` wrapper struct and `ModelCtx` for brievity, but they basically provide additional information about failiure, `Event` type information and the surrounding models (in respective order). For context, `'s` lifetime represents the sumulated system - no model or any of its handlers are expected to live longer than the whole simulation.
+
+We can see that:
+- `Event` is basically any static type (type known at compile time).
+- `Handler` is just a function that takes a mutable reference to the `Model` and consumes an `Event`.
+- `Model::input_handler` takes a constant `Index` and should return the name of the input and corresponding (static) `Handler` function.
+
+The issue with this approach however is that while the trait we specified is **valid**, it's next to impossible to implement properly. Even if the expected usage pattern worked for a single input:
+```rust
+impl<'s> Model<'s, (Ball,), ()> for Player {
+    fn input_handler<U0>() -> (
+        &'s str,
+        &'s dyn Handler<'s, Self, Ball>,
+    )
+    where
+        U0: Unsigned,
+    {
+        let handler: &'s dyn Handler<'s, Self, Ball> = &|_model, _event| Ok(());
+        ("recieve", handler)
+    }
+}
+```
+the trait would still fail for multiple inputs due to "duplicate definitions" error and [specialization](https://github.com/rust-lang/rust/issues/31844) not being supported. In other words, we need to provide a single output from a function with a single definition that contains all the handlers.
+
+## Type Mapping
+
+In order to transform our list of inputs `(A, B, C)` into a return type we're expecting from our function:
+```rust
+type Result = (
+    (&'s str, &'s dyn Handler<'s, Self, A>),
+    (&'s str, &'s dyn Handler<'s, Self, B>),
+    (&'s str, &'s dyn Handler<'s, Self, C>),
+);
+```
+we need a way to perform a mapping operation on types. This is where shit hits the fan as we're looking at a very complex transformation. We just to try hard enough though because it _is_ possible... somehow... I'm almost certain.
+
+Mapping is a composition of iteration (which we have), application and collection. So in order to perform application we need to figure out how to express it efficiently - ideally in a way we can re(ab)use multiple times.
+
+We start with a trait (our version of "operator"):
+```rust
+trait Mapping<T> {
+    type Value;
+}
+```
+and implement it for our use case:
+```rust
+struct OurResult<'s> {
+    _phantom: std::marker::PhantomData<&'s ()>,
+}
+impl OurResult<'_> {
+    const fn new() -> Self {
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'s, T> Mapping<T> for OurResult<'s>
+where
+    T: 'static,
+{
+    type Value = (&'s str, &'s dyn Handler<'s, Self, T>);
+}
+```
+
+We're using `Phantom` in `OurResult` because rust requires us to restrict `'s` in `Mapping<T>` implementation in the signature. I'd use `#[derive(Default)]`, but we need `OurResult` to be const-constructible.
+
+Now that we're done with application part of our mapping, we need a collector that would allow us to create a tuple from a list of mapped input types.
