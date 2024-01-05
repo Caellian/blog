@@ -124,7 +124,7 @@ type Model<'s, I, O> {
 }
 ```
 
-## Metaprogramming theory
+## What Lists Are Made Of
 
 We're trying to specify different model inputs/outputs as a list of types. Rust
 doesn't have variable argument generics
@@ -149,7 +149,7 @@ list_ type would be zero sized but given that tuples _are_ sized we can get
 around it by storing our type list as an empty array (`[TypeList; 0]`).
 `Phantom` might be more appropriate for this kind of use though.
 
-## Practice
+## Type List Type
 
 We start by defining a trait we can use to specify some arbitrary type list. Due
 to lack of vararg generics there will be an upper bound to our list but thanks
@@ -242,6 +242,9 @@ macro_rules! impl_type_list {
     };
 }
 ```
+
+Sadly this was the last place where LLMs prooved useful and from this point on
+we're forced to not be replaced by AI 🤣
 
 And apply some magic I picked up from
 [`piccolo`](https://github.com/kyren/piccolo/issues/38#issuecomment-1819824923):
@@ -557,9 +560,9 @@ In order to transform our list of inputs `(A, B, C)` into a return type we're
 expecting from our function:
 ```rust
 type Result = (
-    (&'s str, &'s dyn Handler<'s, Self, A>),
-    (&'s str, &'s dyn Handler<'s, Self, B>),
-    (&'s str, &'s dyn Handler<'s, Self, C>),
+    (&'static str, &'s dyn Handler<'s, Self, A>),
+    (&'static str, &'s dyn Handler<'s, Self, B>),
+    (&'static str, &'s dyn Handler<'s, Self, C>),
 );
 ```
 we need a way to perform a mapping operation on types. This is where shit hits
@@ -582,35 +585,41 @@ trait Apply {
 ```
 and declare our "method":
 ```rust
-struct ToHandler<'s> {
-    _phantom: std::marker::PhantomData<&'s ()>,
+struct ToHandler<Model> {
+    _phantom: std::marker::PhantomData<Model>,
 }
 ```
 We're using `Phantom` in `ToHandler` because rust will require us to restrict
-`'s` while we're trying to implement `Apply` in the signature. The `ToHandler`
-type will never be constructed or used at runtime though as it's effectively
-just a _compile time function signature_.
+`'s` while we're trying to implement `Apply` in the signature. `ToHandler` also
+contains any types which stay constant throughout the mapping operation. The
+`ToHandler` type will never be constructed or used at runtime though as it's
+effectively just a _compile time function signature_.
 
 Then we can specify how the method is applied, i.e. the body of the method:
 ```rust
-impl<'s, T> Apply for (ToHandler<'s>, T)
+impl<M, T> Apply for (ToHandler<M>, T)
 where
+    M: 'static,
     T: 'static,
 {
-    type Value = (&'s str, &'s dyn Handler<'s, Self, T>);
+    type Value = (&'static str, &'static dyn Handler<M, T>);
 }
 ```
 You'll notice we're implementing the method for a tuple of method and arguments
 (in this case one), that's because we have no other way of passing compile time
-information into `Apply`. If we tried storing `T` as a generic on `Apply`, we
-wouldn't be able to invoke it for different types. Conversly, if we tried
-storing it on `ToHandler`, then out collector wouldn't be generalizable as it
-would also have to deal with `ToHandler` types.
+information into `Apply`:
 
-If your use case calls for multiple arguments which can change throughout the
-same type evaluation, this tuple is the appropriate place to add them. Note that
-multiple arguments will change how you implement `TypeMapping` in the following
-section.
+- If we tried storing `T` as a generic on `Apply`, we wouldn't be able to invoke
+it for different types.
+- Conversly, if we tried storing it on `ToHandler`, then out collector wouldn't
+be agnostic with respect to method it's applying.
+
+So, in general, **variable types** are stored in the tuple we're calling `Apply` on and **non-variable types** (such as `M` in my case) should go into the signature struct (`ToHandler`).
+
+While writing this article I also noticed that mapping with lifetimes doesn't work, so I removed the system lifetime from `Handler` signature. This seems like a type checker bug though so it might get fixed at some point.
+
+Note that multiple variable arguments will change how you implement `TypeMapping` in the
+following section.
 
 ### Collector
 
@@ -645,5 +654,37 @@ macro_rules! impl_mapping {
 all_supported_tuples!(impl_mapping);
 ```
 
-You can try the code we currently have on
-[`playground`](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=47f94126ef98a825141343f04090dedb)([gist](https://gist.github.com/rust-play/47f94126ef98a825141343f04090dedb)).
+You can see a simplified version without the invariant `M` (model) on the [playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=47f94126ef98a825141343f04090dedb)([gist](https://gist.github.com/rust-play/47f94126ef98a825141343f04090dedb)).
+
+## API-first approach; attempt no. 2
+
+Surely we have enough type support now to make use of it?!
+
+Our new `Model` and implementation for `Player` look as following:
+```rust
+trait Model<'s, I: TypeList, O: TypeList>: Sized {
+    fn input_handlers() -> <I as TypeMapping<ToHandler<Self>>>::Value
+    where
+        I: TypeMapping<ToHandler<Self>>;
+
+    // other methods...
+}
+
+struct Ball;
+struct Player;
+
+impl<'s> Model<'s, (Ball,), ()> for Player {
+    fn input_handlers() -> <(Ball,) as TypeMapping<ToHandler<Self>>>::Value
+    where
+        (Ball,): TypeMapping<ToHandler<Self>>,
+    {
+        (("recieve", handle_ball),)
+    }
+}
+
+fn handle_ball(_model: &mut Player, _event: Ball) -> Result<(), String> {
+    Ok(())
+}
+```
+
+With that, we're done with writing `input_handlers`.
