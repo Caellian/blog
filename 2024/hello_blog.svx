@@ -3,6 +3,7 @@ title: "Hello Blog"
 summary: "Details on how I set up my blog."
 update: "2024-01-04"
 date: "2024-01-02"
+toot: "111688364396578489"
 tags:
   - SEO
   - Svelte

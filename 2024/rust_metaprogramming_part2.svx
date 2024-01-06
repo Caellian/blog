@@ -1,36 +1,42 @@
 ---
 title: "Rust Metaprogramming - Part 2"
 summary: "Can't do nothin' with types you can't access. In this post I cover how to access type lists built in the previous article."
+prev: "2024/rust_metaprogramming"
 tags:
   - Rust
   - metaprogramming
   - abstraction
 ---
 
-## Lower Bounds
+## Introduction
 
 In order to make our lives easier, and allow ourselves to treat the forward type
-iterator as an actual type list, we'll define a `get` function.
+iterator as an actual type list, we'll define a `TypeIndex` trait that allows us to access n-th element of our `TypeList`.
+
+We also need a way to access n-th element from the type list at runtime.
+
+## Existing Solutions
 
 As we'll have to perform operations on const numbers we'll use
-[`typenum`](https://github.com/paholg/typenum) crate. Rust does support [const generics](https://github.com/rust-lang/rust/issues/44580), but  
+[`typenum`](https://github.com/paholg/typenum) crate. Rust does support [const generics](https://github.com/rust-lang/rust/issues/44580), but const expressions aren't stable ([yet]()). 
 
-Our `Get` function trait declaration is rather simple:
-<div data-copy/>
+Our `TypeIndex` trait declaration is rather simple:
+<div data-copy />
 
 ```rust
-trait TypeIndex<N> {
+use typenum::Unsigned;
+trait TypeIndex<N: Unsigned> {
     type Value;
 }
 ```
 
-Our implementation of the trait (if it worked), would look something like:
+Our implementation of the trait, should look something like:
 
 ```rust
 use std::ops::Sub;
-use typenum::{Gr, Sub1, Unsigned, B0, B1};
+use typenum::{Gr, Sub1, Unsigned, U0, U1};
 
-impl<L> TypeIndex<B0> for L
+impl<L> TypeIndex<U0> for L
 where
     L: TypeList,
 {
@@ -39,7 +45,7 @@ where
 
 impl<N, L> TypeIndex<N> for L
 where
-    N: Unsigned + Sub<B1>,
+    N: Unsigned + Sub<U1>,
     L: TypeList,
     Sub1<N>: Unsigned
 {
@@ -47,8 +53,8 @@ where
 }
 ```
 
-The compiler errors with the above code, stating that `typenum` _could_ at some
-point implement `Sub1<N>: Unsigned` for `B0`. This is wrong as there's no number
+Except the implementation above doesn't work. The compiler errors, stating that `typenum` _could_ at some
+point implement `Sub1<N>: Unsigned` for `U0`. This is wrong as there's no number
 lesser than `N = 0` which would satisfy the `Unsigned` constraint, so `typenum`
 won't do that - the compiler can't understand semantics though.
 
@@ -64,9 +70,9 @@ To achieve this we want to copy `Sub1` from typenum, which is a type alias:
 type Sub1<N> = <N as std::op::Sub<B1>>::Output;
 ```
 
-## Operators
+## Decrement
 
-In order to do that, we need our own `Decrease` trait:
+In order to handle counting, we need our own `Decrease` trait so that we can implement it for existing `typenum` number types:
 
 ```rust
 trait Decrease {
@@ -126,40 +132,44 @@ all_seq_pairs!(impl_decrease,
 );
 ```
 
-Now with our own decrement operator, we can finally express bounds for `Get`
-unambiguously:
+## Final Indexing
+
+Now with our own decrement operator, we can finally express bounds for
+`TypeIndex` unambiguously:
+<div data-copy />
 
 ```rust
+// Handle cases where N > U0
+impl<N, L> TypeIndex<N> for L
+where
+    L: TypeList,
+    // N is a number that can be decreased i.e. not U0
+    N: Unsigned + Decrease,
+    // decrease result is Unsigned number type
+    <N as Decrease>::Value: Unsigned,
+    // tail must be indexable
+    L::Tail: TypeIndex<<N as Decrease>::Value>,
+{
+    type Value = <L::Tail as TypeIndex<<N as Decrease>::Value>>::Value;
+}
+
+// If N is U0, then we return L::Head
 impl<L> TypeIndex<typenum::U0> for L
 where
     L: TypeList,
 {
     type Value = L::Head;
 }
-
-impl<N, L> TypeIndex<N> for L
-where
-    N: Unsigned + Decrease,
-    L: TypeList,
-    <N as Decrease>::Value: Unsigned, // decreased value is unsigned
-    L::Tail: TypeIndex<<N as Decrease>::Value>, // tail must be indexable
-{
-    type Value = <L::Tail as TypeIndex<<N as Decrease>::Value>>::Value;
-}
 ```
 
-With this nifty addition, we can substitute our previous chain of expressions
-with a single indexing operator and the compiler will do the rest:
+With this addition, we can substitute our previous chain of expressions with a
+single indexing operator and the compiler will handle recursive normalization on its own:
 
 ```rust
 type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
 ```
 
 You can try out this code on
-[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=98836acb79ac49a15f465de5a010955a)
-([gist](https://gist.github.com/rust-play/98836acb79ac49a15f465de5a010955a)).
+[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=8808f62a62639ff630368a31a3d70a2f)
+([gist](https://gist.github.com/rust-play/8808f62a62639ff630368a31a3d70a2f)).
 
-Now that we've built the the getter, we have a good template to work with while
-implementing the rest of the operators we might need. In order to properly gauge
-that though it's time for us to start designing the user facing API so that we
-get a better idea of what our exact requirements are.

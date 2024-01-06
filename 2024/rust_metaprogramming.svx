@@ -1,7 +1,10 @@
 ---
 title: "Rust Metaprogramming - Part 1"
 summary: "They say macros are Rust equivalent of C++ metaprograming. No they ain't and I can prove it."
+update: "2024-01-06"
 date: "2024-01-05"
+next: "2024/rust_metaprogramming_part2"
+toot: "111705676105732187"
 tags:
   - Rust
   - metaprogramming
@@ -146,7 +149,7 @@ metaprogramming. Macros can't handle the use case where `Model<'s>` might change
 interface and lookup table(s) based on types litesim isn't aware of. So in order
 to tackle this, I'd like to replace `Model<'s>` with something like:
 ```rust
-type Model<'s, I, O> {
+trait Model<'s, I, O> {
   // details...
 }
 ```
@@ -179,8 +182,10 @@ to macros we can make it arbitrarily large. Realistically, we don't expect
 models with more than 64 inputs and outputs.
 
 We declare our list trait with some basic properties:
+<div data-copy />
+
 ```rust
-trait TypeList {
+pub trait TypeList {
     type Head;
     type Tail: TypeList;
 }
@@ -202,7 +207,7 @@ messages and automagically handled bounds checking we'll have to deal with at a
 later point. No matter, we will do without it.
 
 ```rust
-trait TypeList {
+pub trait TypeList {
     type Head;
     type Tail: TypeList;
 }
@@ -458,6 +463,10 @@ each tuple size. As always, macros come to the rescue:
 <div data-copy />
 
 ```rust
+pub trait TypeMapping<Method> {
+    type Value;
+}
+
 macro_rules! impl_mapping {
     () => {
         impl<Method> TypeMapping<Method> for ()
