@@ -2,6 +2,7 @@
 title: "Rust Metaprogramming - Part 2"
 summary: "Can't do nothin' with types you can't access. In this post I cover how to access type lists built in the previous article."
 prev: "2024/rust_metaprogramming"
+publish: false
 tags:
   - Rust
   - metaprogramming

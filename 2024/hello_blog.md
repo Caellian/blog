@@ -1,8 +1,6 @@
 ---
 title: "Hello Blog"
 summary: "Details on how I set up my blog."
-update: "2024-01-04"
-date: "2024-01-02"
 toot: "111688364396578489"
 tags:
   - SEO
@@ -169,7 +167,7 @@ Given that the svx files can provide arbitrary metadata, an idea that I had whil
 If `type` is something other than `post`, the website could handle the metadata differently.
 
 For instance:
-```toml
+```yaml
 type: video
 title: USS Inverness
 summary: "A really cool USS Inverness model showcase I found."
