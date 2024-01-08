@@ -38,9 +38,8 @@ something similar.
 I ended up extending generated HTML by dynamically generating line numbers and
 optionally providing a copy button:
 
-<div data-copy />
-
 ```js
+//#! copy
 async function addCopy() {
     let marked = article.querySelectorAll(
         'div[data-copy]+pre:has(code[class*="language-"])'

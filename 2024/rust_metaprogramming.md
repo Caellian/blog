@@ -9,54 +9,45 @@ tags:
   - abstraction
 ---
 
-For one of my classes, I wrote a discrete event simulation library in Rust. The
-reasons I wrote it were...
-
-- I like Rust.
-- I did very little research into existing libraries.
-- I needed filler for the essay as I covered the assigned topic and didn't have
-  much content.
-- I didn't like requirements some existing libraries imposed on data I used in
-  my simulation.
-- I have an adventurous spirit and like exploring topics I know little about,
-  mostly through code.
-
-I had several good references I used while doing so:
-- [`sympy`](https://gitlab.com/team-simpy/simpy)
-  - found this _after_ writing my thing, would've saved me time
-  - listing it as a good alternative to quickly get started with simulation modeling
-- [`sim`](https://github.com/ndebuhr/sim) - the library I used but didn't like
-  the requirements of
-  - taught me about [DEVS](https://en.wikipedia.org/wiki/DEVS) and diffent noise
-    functions
-- [`sequent`](https://github.com/kindredgroup/sequent)
-  - seductively tempted me into implementing backtracking
-- [`asynchronix`](https://github.com/asynchronics/asynchronix)
-  - showed me all the things I want, but don't have time to implement properly
-
 ## Introduction
 
-I wanted to build something dumb simple to use that doesn't have as steep
-learning curve as some other solutions in the space have. So I made
-[`litesim`](https://github.com/Caellian/litesim) (and described it in the essay
-😄). The professor was like:
+This article covers type metaprogramming principles in Rust via examples based on [`litesim`](https://github.com/Caellian/litesim).
 
-> I'm not sure _why_ you did it, that's much more than I asked for and it wasn't necessary. <span
-> data-paraphrase></span>
+It will go over type transformations that are necessary in order to provide
+end-users with a type safe interface while reducing the amount of library
+internals they're exposed to.
 
-which I guess is true, but I also felt like there was nothing simple enough for
-use cases like mine, where I was on a tight schedule and needed to write a
-simulation **fast**, without wasting time learning how to use 10 new concepts
-introduced by a library that's supposed to make things simpler.
+This is generally done with macros, and when people in Rust community say
+metaprogramming they usually refer to writing procedural macros. But that isn't
+ideal in some scenarios and allows end-users to violate API requirements which
+can in turn cause undefined behavior.
 
-The biggest deal breaker was that the library I tried using required my data to
-support things like serialization even though I never planned on storing an
-in-flight model as it was supposed to be just a simple demo.
+For reference, I've only managed to find the posts that describe metaprogramming
+via macros in context of Rust:
+- ["Understanding and Implementing Rust's Metaprogramming"](https://reintech.io/blog/understanding-implementing-rust-metaprogramming) by [_Reintech_](https://reintech.io/)
+- ["That's so Rusty: Metaprogramming"](https://dev.to/imaculate3/that-s-so-rusty-metaprogramming-49mj) by [_imaculate_](https://imaculate.github.io/)
+- ["Metaprogramming with macros"](https://subscription.packtpub.com/book/web-development/9781800560819/2/ch02lvl1sec07/metaprogramming-with-macros) by [_packt_ publishing](https://packtpub.com)
+- ["Rust Macros — Advanced Use Cases, Metaprogramming Mastery, and Code Generation"](https://medium.com/@alexandragrosu03/rust-macros-advanced-use-cases-metaprogramming-mastery-and-code-generation-6c8216af5086) by [_Alexandra Grosu_](https://medium.com/@alexandragrosu03)
+- and so on...
 
-So instead of making a simulation, I made a discrete event simulation library
-that I felt was the appropriate substitute. You could argue that the library was
-a bigger time hog, but don't try me because I win arguments even when I know I'm
-wrong. <span data-tone=half-joke></span>
+Another approach I came across, in article ["Type-directed metaprogramming in
+Rust"](https://willcrichton.net/notes/type-directed-metaprogramming-in-rust/) by
+[_Will Crichton_](https://willcrichton.net), is using rustc API (rust compiler)
+directly in order to achieve similar goals as this post tries to accomplish, but
+internal rustc API is unstable which makes this approach both harder to
+implement and time consuming to maintain across versions.
+- I find it to be a great introduction to rust internals, HIR and AST representations.
+- It makes sense to use it if one is developing something along the lines of [`c2rust`](https://github.com/immunant/c2rust/).
+
+In general, metaprogramming (the kind I'm referring to) causes your codebase to
+grow in both size and complexity (for both C++ and Rust), but in turn yields
+nicer to use API interfaces that are much stricter, safer and concise to use.
+Conversely, macros can be even more verbose, are somewhat easier to write, but
+(in general) don't impose any additional bounds on the data that _can be passed_
+into your API.
+
+The following section summarizes the goals of `litesim` and why macros aren't
+ideal for its use case.
 
 ### litesim
 
@@ -70,6 +61,7 @@ A simple ping-pong example requires less than 50 lines of code and very little
 understanding of how the library works:
 
 ```rust
+//#! name:"example"
 use litesim::prelude::*;
 
 pub struct Player;
@@ -124,6 +116,7 @@ macro does a lot of code transformation in the background in order to make the
 
 In minimal form, implementing `Model<'s>` with it looks like:
 ```rust
+//#! name:"example"
 #[litesim_model]
 impl<'s> Model<'s> for MyModel {}
 ```
@@ -147,6 +140,7 @@ metaprogramming. Macros can't handle the use case where `Model<'s>` might change
 interface and lookup table(s) based on types litesim isn't aware of. So in order
 to tackle this, I'd like to replace `Model<'s>` with something like:
 ```rust
+//#! file:"model.rs"  hide-lines
 trait Model<'s, I, O> {
   // details...
 }
@@ -180,9 +174,9 @@ to macros we can make it arbitrarily large. Realistically, we don't expect
 models with more than 64 inputs and outputs.
 
 We declare our list trait with some basic properties:
-<div data-copy />
 
 ```rust
+//#! copy file:"type_list.rs"
 pub trait TypeList {
     type Head;
     type Tail: TypeList;
@@ -191,6 +185,7 @@ pub trait TypeList {
 
 Now we can start implementing it for tuples we want to support:
 ```rust
+//#! file:"type_list.rs"
 impl TypeList for () {
     type Head = !;
     type Tail = ();
@@ -205,6 +200,7 @@ messages and automagically handled bounds checking we'll have to deal with at a
 later point. No matter, we will do without it.
 
 ```rust
+//#! file:"type_list.rs"
 pub trait TypeList {
     type Head;
     type Tail: TypeList;
@@ -234,9 +230,9 @@ impl<A, B, C> TypeList for (A, B, C) {
 
 Now that we've written out the first four cases, we can politely ask our
 friendly neighborhood LLM to convert it into a macro for us:
-<div data-copy/>
 
 ```rust
+//#! copy file:"type_list.rs"
 macro_rules! impl_type_list {
     () => {
         impl TypeList for () {
@@ -263,9 +259,9 @@ macro_rules! impl_type_list {
 
 And apply some macro magic I picked up from
 [`piccolo`](https://github.com/kyren/piccolo/issues/38#issuecomment-1819824923) 🪄:
-<div data-copy/>
 
 ```rust
+//#! copy file:"util.rs"
 macro_rules! smaller_tuples_too {
     ($m: ident, $ty: ident) => {
         $m!{}
@@ -296,9 +292,9 @@ macro_rules! all_supported_tuples {
 
 Combining the two macros allows us to generate 64 implementations of the
 trait with a single macro call:
-<div data-copy/>
 
 ```rust
+//#! copy file:"type_list.rs"
 all_supported_tuples!(impl_type_list);
 ```
 
@@ -316,6 +312,7 @@ accessed from `TypeList` vtable because the result `Tail` might implement some
 other trait that also has a `Tail` associated type. `Tail` might be a bad
 example because it's unique in our context, but consider the following:
 ```rust
+//#! name:"example"
 trait MyTrait {
     type Error;
 }
@@ -359,6 +356,7 @@ Rust allows us to handle type projection via type aliases much as C++ does. In
 Rust however, we rely on traits instead of classes for the same functionality:
 
 ```rust
+//#! name:"example"
 trait TypeSpaceFunction<T> {
     type Value = (Transformed, T);
 }
@@ -368,6 +366,7 @@ One notable difference is that in Rust, we can associate trait implementations
 with some other data which simplifies how we handle conditionals:
 
 ```rust
+//#! name:"example"
 trait SplitFunction {
     type Value;
 }
@@ -388,6 +387,7 @@ expressions. Rust is more strict so the type system is separate.
 In order to transform our list of inputs `(A, B, C)` into a return type we're
 expecting from our function:
 ```rust
+//#! name:"example"
 type Result = (
     (&'static str, &'static dyn Handler<Self, A>),
     (&'static str, &'static dyn Handler<Self, B>),
@@ -404,15 +404,16 @@ Ideally in a way we can re(ab)use multiple times.
 ### Apply Operator
 
 We start with a trait - our version of "call this thing":
-<div data-copy />
 
 ```rust
+//#! copy file:"mapping.rs"
 trait Apply {
     type Value;
 }
 ```
 and declare our "method":
 ```rust
+//#! file:"model.rs"
 struct ToInputConnector<Model> {
     _phantom: std::marker::PhantomData<Model>,
 }
@@ -426,6 +427,7 @@ we don't need to worry about providing any constructors.
 
 Then we can specify how the method is applied, i.e. the body of the method:
 ```rust
+//#! file:"model.rs"
 impl<M, T> Apply for (ToInputConnector<M>, T)
 where
     M: 'static,
@@ -458,9 +460,9 @@ types.
 
 Sadly, this is a place we have to declare multiple implementations again for
 each tuple size. As always, macros come to the rescue:
-<div data-copy />
 
 ```rust
+//#! copy file:"mapping.rs"
 pub trait TypeMapping<Method> {
     type Value;
 }
@@ -508,6 +510,7 @@ types in tuples the `TypeMapping` is implemented for if they do.
 
 Our new `Model` trait and implementation for `Player` looks as following:
 ```rust
+//#! file:"model.rs"
 struct ToInputConnector<Model> {
     _phantom: std::marker::PhantomData<Model>,
 }
@@ -564,6 +567,7 @@ With that, connectors are done. I want to point out that the implementation
 above (somewhat) successfully replaces a whole bunch of complicated code that
 was previously generated by `#[litesim_model]`:
 ```rust
+//#! file:"model.rs"
 impl<'s> Model<'s> for Player {
     fn input_connectors(&self) -> Vec<&'static str> {
         vec!["receive"]
