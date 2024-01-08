@@ -57,8 +57,7 @@ slate when they're modelling a system. It's based on
 of composable models (though it deviates a lot from the fromalism). The only
 structs the user generally needs to interact with are `SystemModel`, `Simulation` and `ModelCtx`.
 
-A simple ping-pong example requires less than 50 lines of code and very little
-understanding of how the library works:
+A simple ping-pong example would look like the following:
 
 ```rust
 //#! name:"example"
