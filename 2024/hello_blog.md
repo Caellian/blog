@@ -2,6 +2,7 @@
 title: "Hello Blog"
 summary: "Details on how I set up my blog."
 toot: "111688364396578489"
+next: "2024/hello_again"
 tags:
   - SEO
   - Svelte
