@@ -1,5 +1,5 @@
 ---
-title: "Rust Metaprogramming - Part 2"
+title: "Rust Type Metaprogramming - Part 2"
 summary: "Can't do nothin' with types you can't access. In this post I cover how to access type lists built in the previous article."
 prev: "2024/rust_metaprogramming"
 publish: false
@@ -22,7 +22,7 @@ As we'll have to perform operations on const numbers we'll use
 [`typenum`](https://github.com/paholg/typenum) crate. Rust does support [const generics](https://github.com/rust-lang/rust/issues/44580), but const expressions aren't stable ([yet]()). 
 
 Our `TypeIndex` trait declaration is rather simple:
-<div data-copy />
+<div data-copy></div>
 
 ```rust
 use typenum::Unsigned;
@@ -173,4 +173,3 @@ type SixthElement = <SomeTypeList as TypeIndex<typenum::U5>>::Value;
 You can try out this code on
 [playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=8808f62a62639ff630368a31a3d70a2f)
 ([gist](https://gist.github.com/rust-play/8808f62a62639ff630368a31a3d70a2f)).
-

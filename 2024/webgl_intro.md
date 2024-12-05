@@ -167,21 +167,23 @@ main()
 
 ## Zadatak 5: crtanje točke (korištenje shadera)
 
-<script class="show">
-//#! name:"zadatak1.js"
-// Vertex shader program
-var VSHADER_SOURCE =`
+```vert
+//#! name:"VSHADER_SOURCE" store-dynamic:true
 void main() {
   gl_Position = vec4(0.2, 0.3, 0.0, 1.0);
   gl_PointSize = 10.0;
-}`;
+}
+```
 
-// Fragment shader program
-var FSHADER_SOURCE = `
+```frag
+//#! name:"FSHADER_SOURCE" store-dynamic:true
 void main() {
   gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
-}`;
+}
+```
 
+<script class="show">
+//#! name:"zadatak1.js"
 function main() {
   // Dohvacanje <canvas> elementa
   var canvas = document.getElementById('webgl-z5');
@@ -218,21 +220,23 @@ main()
 
 ## Zadatak 6: korištenje varijable atributa i uniformne varijable
 
-<script class="show">
-// Vertex shader program
-var VSHADER_SOURCE =`
+
+```vert
+//#! name:"VSHADER_SOURCE" store-dynamic:true
 attribute vec2 a_Position;
 void main() {
   gl_Position = vec4(a_Position, 0.0, 1.0);
   gl_PointSize = 10.0;
-}`;
+}
+```
 
-// Fragment shader program
-var FSHADER_SOURCE = `
+```frag
+//#! name:"FSHADER_SOURCE" store-dynamic:true
 void main() {
   gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
-}`;
-</script>
+}
+```
+
 <script class="show">
 function main() {
   // Dohvacanje <canvas> elementa
@@ -363,15 +367,15 @@ canvas.onclick = (ev) => {
 
 ## Zadatak 9: ePortfolio
 
-<script class="show">
-var VSHADER_SOURCE =`
+```vert
+//#! name:"VSHADER_SOURCE" store-dynamic:true
 attribute vec2 a_Position;
 attribute float a_boxSize;
 void main() {
   gl_Position = vec4(a_Position, 0.0, 1.0);
   gl_PointSize = a_boxSize;
-}`;
-</script>
+}
+```
 
 <script class="show">
 function draw_point(gl, position, size) {
@@ -476,7 +480,7 @@ Please use a browser that supports "canvas"
       flex-grow: 1;
       height: 0.1rem;
       background: var(--fg);
-      margin: 58px;
+      margin: 58px 0;
 
       &::-webkit-slider-thumb,
       &::-moz-range-thumb {
@@ -523,7 +527,7 @@ function hueToRgb(p, q, t) {
 }
 </script>
 
-<script class="show" defer>
+<script class="show">
 let canvas = document.getElementById("webgl-z9");
 let ctx = init(canvas);
 let lastPos = { x: Math.random() * canvas.width, y: Math.random() * canvas.height };
