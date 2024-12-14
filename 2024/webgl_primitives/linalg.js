@@ -180,7 +180,7 @@ export function rotateEuler(x = undefined, y = undefined, z = undefined) {
         [0, cosX, -sinX, 0],
         [0, sinX, cosX, 0],
         [0, 0, 0, 1],
-      ]).transpose()
+      ])
     );
   }
   if (Y || 0 != 0) {
@@ -192,7 +192,7 @@ export function rotateEuler(x = undefined, y = undefined, z = undefined) {
         [0, 1, 0, 0],
         [-sinY, 0, cosY, 0],
         [0, 0, 0, 1],
-      ]).transpose()
+      ])
     );
   }
   if (Z || 0 != 0) {
@@ -204,11 +204,11 @@ export function rotateEuler(x = undefined, y = undefined, z = undefined) {
         [0, 1, 0, 0],
         [-sinZ, 0, cosZ, 0],
         [0, 0, 0, 1],
-      ]).transpose()
+      ])
     );
   }
 
-  return R;
+  return R.transpose();
 }
 
 export function mxMul(...mx) {
