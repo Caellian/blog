@@ -1,6 +1,6 @@
 ---
 title: "Sjenčanje i osvjetljavanje u Blenderu"
-summary: "RG - Vježbe 7: Teksture u Blenderu"
+summary: "RG - Vježbe 7: Sjenčanje i osvjetljavanje u Blenderu"
 topic: "računalna grafika"
 lang: hr
 tags:
