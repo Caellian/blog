@@ -15,7 +15,8 @@ ravna ploha (2D). Upute za taj trik se nalaze
 Zbog tog kolegija su početni zadaci pre elementarni da bi mi ih imalo smisla
 pratiti.
 
-U ovim vježbama bih osobno dodao popis izvora za PBR materijale koji se mogu koristiti:
+U ovim vježbama bih osobno dodao popis izvora za PBR teksturirane materijale
+za daljnu uporabu:
 - [texturehaven.com](texturehaven.com)
 - [cc0textures.com](cc0textures.com)
 - [3dtextures.me](3dtextures.me)
@@ -23,10 +24,7 @@ U ovim vježbama bih osobno dodao popis izvora za PBR materijale koji se mogu ko
 - [sharetextures.com](sharetextures.com)
 - [blenderdaily.xyz/free](blenderdaily.xyz/free)
 
-
 ![prikaz stupova kako je zadano u zadatku](./pillars_preview.png)
-
-<gltf-viewer interactive src="/model.gltf"></gltf-viewer>
 
 Blend datoteku je moguće preuzeti [ovdje](./pillars.blend).
 
