@@ -17,12 +17,12 @@ pratiti.
 
 U ovim vježbama bih osobno dodao popis izvora za PBR teksturirane materijale
 za daljnu uporabu:
-- [texturehaven.com](texturehaven.com)
-- [cc0textures.com](cc0textures.com)
-- [3dtextures.me](3dtextures.me)
-- [cgbookcase.com](cgbookcase.com)
-- [sharetextures.com](sharetextures.com)
-- [blenderdaily.xyz/free](blenderdaily.xyz/free)
+- [texturehaven.com](https://texturehaven.com)
+- [cc0textures.com](https://cc0textures.com)
+- [3dtextures.me](https://3dtextures.me)
+- [cgbookcase.com](https://cgbookcase.com)
+- [sharetextures.com](https://sharetextures.com)
+- [blenderdaily.xyz/free](https://blenderdaily.xyz/free)
 
 ![prikaz stupova kako je zadano u zadatku](./pillars_preview.png)
 
