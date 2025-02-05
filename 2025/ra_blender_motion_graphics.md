@@ -106,4 +106,4 @@ rasterizacije.
 U svrhu potpunosti sam uključio i prikupljene podatke u `.ods` formatu.
 
 Materijali korišteni za izradu se mogu preuzeti u obliku ZIP arhive
-[ovdje](./materials.zip).
+[ovdje](./files.zip).
