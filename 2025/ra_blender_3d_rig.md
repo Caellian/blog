@@ -103,8 +103,8 @@ da bih mogao mnoge mane koje su proizašle iz sitnih pogrešaka u procesu izrade
 sada ispraviti.
 
 <video width="320" height="240" controls>
-    <source src="https://caellian.github.io/blog/2025/ra_blender_motion_graphics/render.webm" type="video/webm">
-    <source src="https://caellian.github.io/blog/2025/ra_blender_motion_graphics/render.mp4" type="video/mp4">
+    <source src="https://caellian.github.io/blog/2025/ra_blender_3d_rig/render.webm" type="video/webm">
+    <source src="https://caellian.github.io/blog/2025/ra_blender_3d_rig/render.mp4" type="video/mp4">
 </video>
 
 ## Datoteke
