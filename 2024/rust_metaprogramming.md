@@ -119,13 +119,13 @@ macro systems which can be used instead.
 In order to manipulate a type list or (more correctly) sequence, destructuring
 into **head** and **tail** elements is a necessity.
 
-In homotopy type theory (HoTT) terms, a tuple (and thereby a `TypeList`) is
-simply a product type. I'll ignore the arity of this type in the article because
-we want to treat it like a growable container type, but it certainly has a
-predefined one and this fact is also enforced by the rust compiler. In practice
-supported tuple arity will make us generate $n$ separate implementations of
-everything mentioned in this article, but to make the article readable let's
-assume it's some large number:
+A `TypeList` is simply a tuple. I'll ignore the cardinality of this type in the
+article because we want to treat it like a growable container type, but it
+certainly has a predefined one and this fact is also enforced by the rust
+compiler. In practice supported tuple cardinality will make us generate $n$
+separate implementations of most trait implementations mentioned in this
+article, but to make the article readable let's assume it's a single large
+number:
 
 $$
 \begin{aligned}
@@ -172,8 +172,7 @@ tuple (similarly to how containers remain empty after calling `pop`/`remove`).
 
 It's a good idea to start by defining a trait that can be used to specify some
 arbitrary type sequence. This will serve as an important stepping stone and make
-out later implementation simpler. It's equivalent to above type theory
-definition.
+out later implementation simpler. It is equivalent to above definitions.
 
 Due to lack of variable argument (vararg) generics, there must exist an upper
 bound to supported sequence length ($n$ from last section), but thanks to macros
@@ -313,7 +312,7 @@ about it is available at each execution stage:
 
 In many cases the compiler handles conversion automatically - allowing a const
 function call with runtime arguments. So in order for our types to stay in the
-type space, all conversion must happen inside it. That's because constant
+type level, all conversion must happen inside it. That's because constant
 functions deal with discrete values and we want to manipulate types.
 
 Rust allows handling of type projection via type aliases much as C++ does. In
@@ -322,7 +321,7 @@ functionality:
 
 ```rust
 //#! name:"example"
-trait TypeSpaceFunction<T> {
+trait TypeLevelFunction<T> {
     // not yet valid syntax; see issue #29661
     type Value = (Transformed, T);
 }
@@ -344,8 +343,9 @@ impl<T> SplitFunction for [T; N] {
 }
 ```
 
-In C++ template metaprogramming, ifs or filters have to be used in constant
-expressions to achieve similar results.
+In C++ template metaprogramming, ifs or filters could be used in constant
+expressions to achieve similar results, but template instantiation is also a
+viable approach.
 
 ## Generic Type Projection
 
@@ -360,14 +360,8 @@ type Result = (
 );
 ```
 
-To start with, a simple $I$ to $O$ type projection would be any mapping of shape:
-
-$$
-SimpleProjection: \Pi_{(i: I)} O(i)
-$$
-
-However, type lists pose a problem problem where the projection shape can't be
-static due to variable number of input and output arguments. We already have
+Type lists pose a problem problem where the projection shape can't be static due
+to variable number of input and output arguments. We already have
 `smaller_tuples_too!` which bridges this gap.
 
 Instead of writing a discrete implementation of projections for each supported
@@ -409,16 +403,17 @@ struct ToInputConnector<Model> {
 }
 ```
 
-The discriminant type (`ToInputConnector`) will never be constructed. Using it
-allows the same `Apply` trait to be used for multiple different mappings which
-makes it more ergonomic to import `Apply` operation.
+The discriminant type (`ToInputConnector`) will never be constructed much like
+majority of structs in metaprogramming. Using it allows the same `Apply` trait
+to be used for multiple different mappings which makes it more ergonomic to
+import `Apply` operation.
 
 I'm using `Phantom` in `ToInputConnector` because Rust will require `Model` to
 be used in the signature of `Apply` implementation. Generally, any types that
 stay constant across all mapping invocations have to be placed into the
 `Phantom` here.
 
-Then _method_ application can be specified (think of it as the body of the method):
+Then _method_ application can now be specified:
 
 ```rust
 //#! file:"model.rs"
@@ -431,21 +426,29 @@ where
 }
 ```
 
+This is almost like a function body, but (luckily) we don't actually need to
+perform any operations other than mapping input types to the `Value` result.
+
 You'll notice I'm implementing the method for a tuple of method and arguments
-(in this case a single one), that's because there's no other way of passing
-compile time information into `Apply`:
+(in this case a single one), that's because implementing `Apply` requires us to
+use up all the generics that are requested in either the trait type or the
+target type. Additionally:
 
 - If we tried storing `T` as a generic on `Apply`, we wouldn't be able to invoke
-  it for different types within the same type list.
-- Conversly, if we tried storing it on `ToInputConnector`, then our mapping
-  wouldn't be agnostic with respect to method it's applying.
+  it for different types within the same type list - it would be forced to be a
+  heterogeneous tuple.
+- Storing `T` in the discriminant (`ToInputConnector`) makes `TypeMapping`
+  described in the next section impossible (or at least very tricky) to
+  implement.
 
 To summarize, **variable types** are stored in the tuple we're calling `Apply`
 on and **non-variable types** (such as `Model` in the example case) should go
 into the implementation discriminant struct (`ToInputConnector`).
 
 Note that multiple variable arguments will change how you implement
-`TypeMapping` in the following section.
+`TypeMapping` in the following section but it should be fairly straightforward
+to extend and modify. Only additional hurdle one might face is that
+`all_supported_tuples!` yields individual types to the macro it's applied to.
 
 ### Apply-to-all
 
@@ -485,7 +488,12 @@ all_supported_tuples!(impl_mapping);
 ```
 
 `TypeMapping` implementations here will change somewhat if multiple variable
-types or lifetimes are needed.
+types or lifetimes are needed, as well as `all_supported_tuples!`.
+`all_supported_tuples!` that's presented here is more of a proof of concept and
+in real use case I'd strongly suggest using [procedural
+macros](https://doc.rust-lang.org/reference/procedural-macros.html) to generate
+more complicated mappings as those will be a lot harder to deal with using
+declarative macros.
 
 You can try out a simplified version without the constant `M` type (for model)
 on the
