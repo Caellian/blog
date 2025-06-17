@@ -1,7 +1,8 @@
 ---
-title: "Rust Type Metaprogramming - Part 1"
+title: "Rust Type Metaprogramming: A List of Types"
 summary: "Theory and practice of proof carrying code in Rust"
-next: "2024/rust_metaprogramming_part2"
+prev: "2025/type_theory"
+next: "2025/metaprogramming_ex_nihilo"
 toot: "111705676105732187"
 tags:
   - Rust
@@ -9,16 +10,9 @@ tags:
   - abstraction
 ---
 
+
 <dl>
 <lh>Terminology</lh>
-<dt>Proof carrying code</dt>
-<dd>code that utilizes mechanisms provided by a compiler
-to demonstrate and verify its own correctness through type restrictions or
-requirements the compiler can understand.</dd>
-<dt>Metaprogramming</dt>
-<dd>a term used to describe development that involves writing
-proof carrying code executed at compile-time by the compiler in order to provide
-less verbose type interfaces.</dd>
 <dt><a href="https://rustc-dev-guide.rust-lang.org/traits/goals-and-clauses.html#trait-ref">Associated type projection</a></dt>
 <dd>resolution of a type from relative type path.</dd>
 <dt>Type path</dt>
@@ -32,11 +26,14 @@ structure (e.g. `FromStr::Err`). Not to be confused with
 </dd>
 </dl>
 
-## Context
+## Changes
 
-This article intoduces type metaprogramming with simple type list construction
-and mapping. Later articles will delve into other operations that will be
-necessary do consume produced type lists.
+This article was modified to be a continuation onto a newer article that
+introduces some basics about metaprogramming. This was necessary because the
+initial version was very sparse on details and the article became too long and
+hard to follow as I continued adding them.
+
+## Context
 
 It will go over type transformations that are necessary in order to provide
 end-users with a type safe interface while reducing the area of library
@@ -122,13 +119,18 @@ macro systems which can be used instead.
 In order to manipulate a type list or (more correctly) sequence, destructuring
 into **head** and **tail** elements is a necessity.
 
-Using constructive type theory (or Martin-Löf type theory) a tuple, and thereby
-a `TypeList` is defined as:
+In homotopy type theory (HoTT) terms, a tuple (and thereby a `TypeList`) is
+simply a product type. I'll ignore the arity of this type in the article because
+we want to treat it like a growable container type, but it certainly has a
+predefined one and this fact is also enforced by the rust compiler. In practice
+supported tuple arity will make us generate $n$ separate implementations of
+everything mentioned in this article, but to make the article readable let's
+assume it's some large number:
 
 $$
 \begin{aligned}
-    \mathrm{Tuple} : & A_0 \times A_1 \times \dots \times A_n\\
-    &\equiv\Sigma_{(A_0:\mathcal{U_i})}\left(\Sigma_{(A_1:\mathcal{U_{i+1}})}\left(\cdots\Sigma_{(A_n:\mathcal{U_{i+n}})}A_n\cdots\right)\right)\\
+    \mathrm{Tuple} : & \space A_0 \times A_1 \times \dots \times A_n\\
+    \mathrm{Tuple} : & \equiv\Sigma_{(a_0: A_0)} \Sigma_{(a_1: A_1)} \cdots \Sigma_{(a_n: A_n)} A_n(a_0, a_1, \dots, a_{n-1})\\
     &\equiv(A_0,\,A_1,\dots,\,A_n)\\
     \mathrm{TypeList} :&\equiv \mathrm{Tuple}
 \end{aligned}
@@ -143,11 +145,10 @@ $$
 }
 $$
 
-Exceptionally, if a tuple is empty, then a `head` function doesn't exist. That
-is, it's not defined for empty tuples. In Rust this can be expressed by
-projecting into a [never type
-`!`](https://github.com/rust-lang/rust/issues/35121) - when it gets added; or by
-using some sentinel zero-variant enum with the same semantics:
+If a tuple is empty, then a `head` function doesn't exist. That is, it's not
+defined for empty tuples. In Rust this can be expressed by projecting into a
+[never type `!`](https://github.com/rust-lang/rust/issues/35121) - when it gets
+added; or by using some sentinel zero-variant enum with the same semantics:
 
 ```rust
 enum Never {}
@@ -165,8 +166,7 @@ $$
 $$
 
 Unlike `head`, `tail` can be defined for empty tuples to return another empty
-tuple (similarly to how containers remain empty even if `pop`/`remove` returns
-`None`).
+tuple (similarly to how containers remain empty after calling `pop`/`remove`).
 
 ### Type Sequence Trait
 
@@ -176,9 +176,13 @@ out later implementation simpler. It's equivalent to above type theory
 definition.
 
 Due to lack of variable argument (vararg) generics, there must exist an upper
-bound to supported sequence length, but thanks to macros we can make it
-arbitrarily large. This is primarily a development inconvenience as vararg
-generics end up producing the same executable code.
+bound to supported sequence length ($n$ from last section), but thanks to macros
+we can make it arbitrarily large. This is primarily a development inconvenience
+as vararg generics end up producing the same executable code. Another
+alternative would be using
+[specialization](https://github.com/rust-lang/rust/issues/31844) with
+[associated type defaults](https://github.com/rust-lang/rust/issues/29661), but
+those two aren't that close to being supported either.
 
 We declare our type sequence trait with previously mentioned fundamental
 properties attached as we have limited use for an empty (marker) trait:
@@ -278,8 +282,8 @@ it a spin in the
 [playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=9bab9b8c8284f08f50a1d2269da203f6)
 ([gist](https://gist.github.com/rust-play/9bab9b8c8284f08f50a1d2269da203f6)).
 
-It's already noticable how accessing the n-th element is inconvenient because we
-need to cast the `Tail` type at each level. The casting is neccessary because
+It's already noticeable how accessing the n-th element is inconvenient because we
+need to cast the `Tail` type at each level. The casting is necessary because
 `Tail` could satisfy multiple different traits with identically named associated
 type.<br/>
 This pain point can be alleviated, but I'll address it in a later post as
@@ -290,7 +294,7 @@ acknowledge and point it out for now.
 
 In order to map types, we have to figure out how to express functions that
 operate on _type values_. Compiled languages have a strict hierarchy of type
-families which encode when the type/data is available and how much information
+families which dictate when the type/data is available and how much information
 about it is available at each execution stage:
 
 <div class="strong-cols row-titles"></div>
@@ -346,43 +350,48 @@ expressions to achieve similar results.
 ## Generic Type Projection
 
 With former utilities in mind we want to construct a way of mapping a type
-sequence `(A, B, C)` into another, more complex, type sequence.
+sequence `(A, B, C)` into another, more complex, type sequence such as:
+```rust
+//#! name:"example"
+type Result = (
+    (&'static str, &'static dyn Handler<Self, A>),
+    (&'static str, &'static dyn Handler<Self, B>),
+    (&'static str, &'static dyn Handler<Self, C>),
+);
+```
 
-Usually, this can be done with a simple projection and it
-
-Projection operation we're making a producer for consumes the discriminant $D$,
-input reqirements $I_r$. It is applied to a tuple of discriminant $D$, input type
-`I`, and output type `O`, and produces a type $Value :\equiv O$
-
-The reason for using a _discriminant_ is that it allows better code reuse. A
-minimal working version doesn't neccessarily need it, but the resulting code
-would need to be specialized for each use case.
-
-Our type function type looks like the following:
+To start with, a simple $I$ to $O$ type projection would be any mapping of shape:
 
 $$
-TypeF: \Pi_{(d: D, i: I)} O(d,i)
+SimpleProjection: \Pi_{(i: I)} O(i)
 $$
 
-that is to say - it produces a type that depends on input types $d: D$ and $i: I$.
+However, type lists pose a problem problem where the projection shape can't be
+static due to variable number of input and output arguments. We already have
+`smaller_tuples_too!` which bridges this gap.
 
-We want to get something like:
+Instead of writing a discrete implementation of projections for each supported
+input type AND count, we perform elementwise lifting of projection logic to
+generalize a single use-case (which doesn't exist yet) and make elementwise type
+projection for `TypeList` simple to use.
+
+This elementwise lifting is essentially `zipApply` of projection to `TypeList`:
 
 $$
-B_i : O\\
-RecursiveApplicator(T, F) := F(Head(T)), Tail(T)\\
-TypeMapping: \Pi_{(d: D, A_i: I)} ( \to (B_0, B_1, \dots, B_n))
+\mathrm{zipApply} :\equiv \mathrm{Y} (\lambda z \space \mathrm{fs} \space \mathrm{xs}.\mathrm{if} (\mathrm{isEmpty} \space \mathrm{fs}) [] (\mathrm{if} (\mathrm{isEmpty} \space \mathrm{xs}) [] (\mathrm{cons} ((\mathrm{head} \space \mathrm{fs}) (\mathrm{head} \space \mathrm{xs})) (\mathrm{z} (\mathrm{tail} \space \mathrm{fs}) (\mathrm{tail} \space \mathrm{xs})))))
 $$
 
-$$
-Apply: (TypeF, I) \to \Pi_{O: D} \Pi_{O: D} O\\
-Method: Apply\\
-TypeMapping: (Tuple, Method) -> \\
-$$
+The only difference when working with Rust projections is that instead of
+passing an actual function that performs a mapping to `zipApply`, we simply use
+a _discriminant_ which allows the trait to be implemented for different
+mappings. In effect, this allows us to map inputs to outputs by simply writing
+the result type.<br/>
+This makes our lives easier because we don't have to worry about the actual
+operations that are needed to shape input types into outputs.
 
 ### Apply Operator
 
-We start with a simple application trait:
+We start with the simple application trait:
 
 ```rust
 //#! copy file:"mapping.rs"
