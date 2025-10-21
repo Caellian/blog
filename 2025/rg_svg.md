@@ -60,8 +60,8 @@ koristim Inkscape.
 Moje konačno rješenje izgleda ovako:
 
 <div style="background:white">
-<object data="https://caellian.github.io/blog/2024/rg_svg/tinsvagelj.svg" width="500" height="500" type="image/svg+xml" />
+<object data="https://caellian.github.io/blog/2025/rg_svg/tinsvagelj.svg" width="500" height="500" type="image/svg+xml"></object>
 </div>
 
 Popratne datoteke je moguće preuzeti
-[ovdje](https://caellian.github.io/blog/2024/rg_svg/tinsvagelj_svg.zip).
+[ovdje](https://caellian.github.io/blog/2025/rg_svg/tinsvagelj_svg.zip).
