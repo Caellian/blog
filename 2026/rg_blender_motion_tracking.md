@@ -97,10 +97,15 @@ snimke.
 
 ## Rezultat
 
-Rezultat izgleda dobro jer geometrija modela koja je usmjerena prema kameri skriva
-distorzije na leđima. Jedina vidljiva mana je udaljenost dlanova od tijela koja je
-uzrokovana deformacijom širokokutne kamere - na žalost nisam imao dovoljno veliki prostor
-za ponovno snimanje s normalnom kamerom.
+Rezultat izgleda dobro s obzirom na sve nedostatke u procesu izrade.
+Vidljive mane su:
+- udaljenost dlanova od tijela koja je uzrokovano deformacijom širokokutne
+  kamere - na žalost nisam imao dovoljno veliki prostor za ponovno snimanje s normalnom
+  kamerom, te
+- deformacije u mreži modela (engl. _mesh_) jer automatic weights nije koristio ispravne
+  vrijednosti. Nisu vidljive u potpunosti zbog kuta kamere, no postoje značani prekidi
+  na leđima.
+
 
 <video width="320" height="240" controls>
     <source src="https://caellian.github.io/blog/2026/rg_blender_motion_tracking/render.webm" type="video/webm">
